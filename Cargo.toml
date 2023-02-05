@@ -1,0 +1,39 @@
+[package]
+name = "processes"
+version = "0.1.0"
+description = "A utility library for accessing processes and modules on windows."
+readme = "README.md"
+repository = "https://github.com/OpenByteDev/processes" 
+homepage = "https://github.com/OpenByteDev/processes"
+documentation = "https://docs.rs/processes"
+license = "MIT"
+authors = ["OpenByte <development.openbyte@gmail.com>"]
+edition = "2021"
+resolver = "2"
+categories = []
+keywords = ["process", "windows", "module"]
+
+[dependencies]
+winapi = { version = "0.3", features = ["processthreadsapi", "libloaderapi", "memoryapi", "wow64apiset"], default-features = false }
+cstr = { version = "0.2", default-features = false }
+sysinfo = { version = "0.27", default-features = false }
+widestring = { version = "1.0", features = ["std", "alloc"], default-features = false }
+path-absolutize = { version = "3.0", default-features = false }
+stopwatch2 = { version = "2.0", default-features = false }
+thiserror = { version = "1.0", default-features = false }
+shrinkwraprs = { version = "0.3", default-features = false }
+same-file = { version = "1.0", default-features = false }
+serde = { version = "1.0", default-features = false, optional = true }
+
+[dev-dependencies]
+current_platform = { version = "0.2", default-features = false }
+tempfile = { version = "3.3", default-features = false }
+
+[features]
+default = []
+full = ["default"]
+doc-cfg = ["full"]
+
+[package.metadata.docs.rs]
+targets = ["x86_64-pc-windows-msvc", "i686-pc-windows-msvc"]
+features = ["doc-cfg"]
