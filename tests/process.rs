@@ -71,7 +71,7 @@ process_test! {
     fn base_name_returns_correct_path(
         process: OwnedProcess
     ) {
-        let name = process.base_name().unwrap().to_string_lossy().to_string();
+        let name = process.base_name().unwrap().to_string();
         assert_eq!("test-program.exe", name);
     }
 }
