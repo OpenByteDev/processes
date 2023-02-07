@@ -20,6 +20,7 @@ use winapi::{
 use crate::{utils, BorrowedProcess, Process};
 
 /// A owned buffer in the memory space of a process.
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "process-memory")))]
 #[derive(Debug)]
 pub struct ProcessMemoryBuffer<'a>(ProcessMemorySlice<'a>);
 
@@ -210,7 +211,7 @@ impl Drop for ProcessMemoryBuffer<'_> {
     }
 }
 
-/// A unowned slice of a buffer in the memory space of a (remote) process.
+/// A unowned slice of a buffer in the memory space of a process.
 #[derive(Debug, Clone, Copy)]
 pub struct ProcessMemorySlice<'a> {
     process: BorrowedProcess<'a>,
@@ -383,6 +384,7 @@ impl<'a> ProcessMemorySlice<'a> {
     }
 
     /// Constructs a new slice spanning the whole buffer.
+    /// This function will return [None] for remote memory buffers.
     #[must_use]
     pub fn as_local_slice(&self) -> Option<&[u8]> {
         if self.is_local() {
@@ -393,6 +395,7 @@ impl<'a> ProcessMemorySlice<'a> {
     }
 
     /// Constructs a new mutable slice spanning the whole buffer.
+    /// This function will return [None] for remote memory buffers.
     #[must_use]
     pub fn as_local_slice_mut(&mut self) -> Option<&mut [u8]> {
         if self.is_local() {
@@ -403,7 +406,7 @@ impl<'a> ProcessMemorySlice<'a> {
     }
 
     /// Flushes the CPU instruction cache for the whole buffer.
-    /// This may be necessary if the buffer is used to store dynamically generated code. For details see [`FlushInstructionCache`].
+    /// This may be necesary if the buffer is used to store dynamically generated code. For details see [`FlushInstructionCache`].
     pub fn flush_instruction_cache(&self) -> Result<(), io::Error> {
         let result = unsafe {
             FlushInstructionCache(self.process.as_raw_handle(), self.as_ptr().cast(), self.len)

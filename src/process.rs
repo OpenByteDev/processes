@@ -284,7 +284,7 @@ pub trait Process: AsHandle + AsRawHandle {
     where
         Self: Sized;
 
-    /// Searches the modules in this process for one with the given name, repeatedly until a matching module is found or the given timeout elapses.
+    /// Searches the modules in this process for one with the given name repeatedly until a matching module is found or the given timeout elapses.
     /// The comparison of names is case-insensitive.
     /// If the extension is omitted, the default library extension `.dll` is appended.
     fn wait_for_module_by_name(
@@ -295,7 +295,7 @@ pub trait Process: AsHandle + AsRawHandle {
     where
         Self: Sized;
 
-    /// Searches the modules in this process for one with the given path, repeatedly until a matching module is found or the given timeout elapses.
+    /// Searches the modules in this process for one with the given path repeatedly until a matching module is found or the given timeout elapses.
     /// The comparison of paths is case-insensitive.
     /// If the extension is omitted, the default library extension `.dll` is appended.
     fn wait_for_module_by_path(
