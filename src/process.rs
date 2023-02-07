@@ -42,7 +42,7 @@ use winapi::{
 };
 
 use crate::{
-    utils::{win_fill_path_buf_helper, FillPathBufResult},
+    utils::{get_win_ffi_path, FillPathBufResult},
     BorrowedProcess, ProcessModule,
 };
 
@@ -154,7 +154,7 @@ pub trait Process: AsHandle + AsRawHandle {
 
     /// Returns the executable path of this process.
     fn path(&self) -> Result<PathBuf, io::Error> {
-        win_fill_path_buf_helper(|buf_ptr, buf_size| {
+        get_win_ffi_path(|buf_ptr, buf_size| {
             let mut buf_size = buf_size as u32;
             let result = unsafe {
                 QueryFullProcessImageNameW(self.as_raw_handle(), 0, buf_ptr, &mut buf_size)
@@ -177,7 +177,13 @@ pub trait Process: AsHandle + AsRawHandle {
     }
 
     /// Returns the file name of the executable of this process.
-    fn base_name(&self) -> Result<OsString, io::Error> {
+    fn base_name(&self) -> Result<String, io::Error> {
+        self.path()
+            .map(|path| path.file_name().unwrap().to_string_lossy().to_string())
+    }
+
+    /// Returns the file name of the executable of this process as an [OsString].
+    fn base_name_os(&self) -> Result<OsString, io::Error> {
         self.path()
             .map(|path| path.file_name().unwrap().to_os_string())
     }

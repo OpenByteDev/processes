@@ -134,7 +134,7 @@ impl<'a> Process for BorrowedProcess<'a> {
 
         for module_handle in modules {
             let module = unsafe { ProcessModule::new_unchecked(module_handle, *self) };
-            let module_name = module.base_name()?;
+            let module_name = module.base_name_os()?;
 
             if module_name.eq_ignore_ascii_case(&target_module_name) {
                 return Ok(Some(module));

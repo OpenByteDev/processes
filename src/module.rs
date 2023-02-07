@@ -1,5 +1,5 @@
 use std::{
-    ffi::{CStr, CString, OsString},
+    ffi::{CStr, CString, OsString, OsStr},
     io,
     mem::{self, MaybeUninit},
     path::{Path, PathBuf},
@@ -9,14 +9,14 @@ use std::{
 use crate::{
     error::{GetLocalProcedureAddressError, IoOrNulError},
     function::RawFunctionPtr,
-    utils::{win_fill_path_buf_helper, FillPathBufResult},
+    utils::{get_win_ffi_path, FillPathBufResult, get_win_ffi_string},
     BorrowedProcess, OwnedProcess, Process,
 };
 use path_absolutize::Absolutize;
-use widestring::{U16CStr, U16CString};
+use widestring::{U16CStr, U16CString, U16Str};
 use winapi::{
     shared::{
-        minwindef::{HINSTANCE__, HMODULE},
+        minwindef::{HINSTANCE__, HMODULE, MAX_PATH},
         winerror::{ERROR_INSUFFICIENT_BUFFER, ERROR_MOD_NOT_FOUND},
     },
     um::{
@@ -214,7 +214,7 @@ impl<P: Process> ProcessModule<P> {
     /// Returns the path that the module was loaded from.
     pub fn path(&self) -> Result<PathBuf, io::Error> {
         if self.is_local() {
-            win_fill_path_buf_helper(|buf_ptr, buf_size| {
+            get_win_ffi_path(|buf_ptr, buf_size| {
                 let buf_size = buf_size as u32;
                 let result = unsafe { GetModuleFileNameW(self.handle(), buf_ptr, buf_size) };
                 if result == 0 {
@@ -233,7 +233,7 @@ impl<P: Process> ProcessModule<P> {
                 }
             })
         } else {
-            win_fill_path_buf_helper(|buf_ptr, buf_size| {
+            get_win_ffi_path(|buf_ptr, buf_size| {
                 let buf_size = buf_size as u32;
                 let result = unsafe {
                     GetModuleFileNameExW(
@@ -262,11 +262,26 @@ impl<P: Process> ProcessModule<P> {
     }
 
     /// Returns the base name of the file the module was loaded from.
-    pub fn base_name(&self) -> Result<OsString, io::Error> {
+    pub fn base_name(&self) -> Result<String, io::Error> {
+        self._base_name(
+            |path| path.to_string_lossy().to_string(),
+            |buf| buf.to_string_lossy()
+        )
+    }
+
+    /// Returns the base name of the file the module was loaded from as an [OsString].
+    pub fn base_name_os(&self) -> Result<OsString, io::Error> {
+        self._base_name(
+            |path| path.to_os_string(),
+            |buf| buf.to_os_string()
+        )
+    }
+
+    fn _base_name<S>(&self, map_local: impl FnOnce(&OsStr) -> S, map_remote: impl FnOnce(&U16Str) -> S) -> Result<S, io::Error> {
         if self.is_local() {
-            self.path().map(|path| path.file_name().unwrap().to_owned())
+            self.path().map(|path| map_local(path.file_name().unwrap()))
         } else {
-            win_fill_path_buf_helper(|buf_ptr, buf_size| {
+            get_win_ffi_string::<MAX_PATH, S>(|buf_ptr, buf_size| {
                 let buf_size = buf_size as u32;
                 let result = unsafe {
                     GetModuleBaseNameW(
@@ -290,10 +305,10 @@ impl<P: Process> ProcessModule<P> {
                         actual_len: result as usize,
                     }
                 }
-            })
-            .map(|e| e.into())
+            }, |s| map_remote(s))
         }
     }
+
 
     /// Returns a pointer to the procedure with the given name from this module.
     ///
