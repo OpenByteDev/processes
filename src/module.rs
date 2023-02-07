@@ -1,5 +1,5 @@
 use std::{
-    ffi::{CStr, CString, OsString, OsStr},
+    ffi::{CStr, CString, OsStr, OsString},
     io,
     mem::{self, MaybeUninit},
     path::{Path, PathBuf},
@@ -9,7 +9,7 @@ use std::{
 use crate::{
     error::{GetLocalProcedureAddressError, IoOrNulError},
     function::RawFunctionPtr,
-    utils::{get_win_ffi_path, FillPathBufResult, get_win_ffi_string},
+    utils::{get_win_ffi_path, get_win_ffi_string, FillPathBufResult},
     BorrowedProcess, OwnedProcess, Process,
 };
 use path_absolutize::Absolutize;
@@ -265,50 +265,53 @@ impl<P: Process> ProcessModule<P> {
     pub fn base_name(&self) -> Result<String, io::Error> {
         self._base_name(
             |path| path.to_string_lossy().to_string(),
-            |buf| buf.to_string_lossy()
+            |buf| buf.to_string_lossy(),
         )
     }
 
     /// Returns the base name of the file the module was loaded from as an [OsString].
     pub fn base_name_os(&self) -> Result<OsString, io::Error> {
-        self._base_name(
-            |path| path.to_os_string(),
-            |buf| buf.to_os_string()
-        )
+        self._base_name(|path| path.to_os_string(), |buf| buf.to_os_string())
     }
 
-    fn _base_name<S>(&self, map_local: impl FnOnce(&OsStr) -> S, map_remote: impl FnOnce(&U16Str) -> S) -> Result<S, io::Error> {
+    fn _base_name<S>(
+        &self,
+        map_local: impl FnOnce(&OsStr) -> S,
+        map_remote: impl FnOnce(&U16Str) -> S,
+    ) -> Result<S, io::Error> {
         if self.is_local() {
             self.path().map(|path| map_local(path.file_name().unwrap()))
         } else {
-            get_win_ffi_string::<MAX_PATH, S>(|buf_ptr, buf_size| {
-                let buf_size = buf_size as u32;
-                let result = unsafe {
-                    GetModuleBaseNameW(
-                        self.process().as_raw_handle(),
-                        self.handle(),
-                        buf_ptr,
-                        buf_size,
-                    )
-                };
-                if result == 0 {
-                    let err = io::Error::last_os_error();
-                    if err.raw_os_error().unwrap() == ERROR_INSUFFICIENT_BUFFER as i32 {
+            get_win_ffi_string::<MAX_PATH, S>(
+                |buf_ptr, buf_size| {
+                    let buf_size = buf_size as u32;
+                    let result = unsafe {
+                        GetModuleBaseNameW(
+                            self.process().as_raw_handle(),
+                            self.handle(),
+                            buf_ptr,
+                            buf_size,
+                        )
+                    };
+                    if result == 0 {
+                        let err = io::Error::last_os_error();
+                        if err.raw_os_error().unwrap() == ERROR_INSUFFICIENT_BUFFER as i32 {
+                            FillPathBufResult::BufTooSmall { size_hint: None }
+                        } else {
+                            FillPathBufResult::Error(err)
+                        }
+                    } else if result >= buf_size {
                         FillPathBufResult::BufTooSmall { size_hint: None }
                     } else {
-                        FillPathBufResult::Error(err)
+                        FillPathBufResult::Success {
+                            actual_len: result as usize,
+                        }
                     }
-                } else if result >= buf_size {
-                    FillPathBufResult::BufTooSmall { size_hint: None }
-                } else {
-                    FillPathBufResult::Success {
-                        actual_len: result as usize,
-                    }
-                }
-            }, |s| map_remote(s))
+                },
+                |s| map_remote(s),
+            )
         }
     }
-
 
     /// Returns a pointer to the procedure with the given name from this module.
     ///

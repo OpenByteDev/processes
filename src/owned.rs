@@ -14,7 +14,10 @@ use std::{
 };
 
 use sysinfo::{PidExt, ProcessExt, SystemExt};
-use winapi::{shared::minwindef::FALSE, um::{processthreadsapi::OpenProcess, winnt::PROCESS_ALL_ACCESS}};
+use winapi::{
+    shared::minwindef::FALSE,
+    um::{processthreadsapi::OpenProcess, winnt::PROCESS_ALL_ACCESS},
+};
 
 use crate::{BorrowedProcess, OwnedProcessModule, Process};
 
@@ -170,17 +173,11 @@ impl OwnedProcess {
     }
 
     /// Creates a new instance from the given pid and the given privileges.
-    /// 
+    ///
     /// # Safety
     /// `access` must be a valid set of process-specific access rights.
     pub unsafe fn from_pid_with_access(pid: u32, access: u32) -> Result<OwnedProcess, io::Error> {
-        let handle = unsafe {
-            OpenProcess(
-                access,
-                FALSE,
-                pid,
-            )
-        };
+        let handle = unsafe { OpenProcess(access, FALSE, pid) };
 
         if handle.is_null() {
             return Err(io::Error::last_os_error());
@@ -281,5 +278,3 @@ impl Drop for ProcessKillGuard {
         let _ = self.0.kill();
     }
 }
-
-

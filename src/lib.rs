@@ -49,11 +49,13 @@ pub mod function;
 mod utils;
 
 /// Returns an abstraction for the current process.
+#[must_use]
 pub fn current() -> BorrowedProcess<'static> {
     BorrowedProcess::current()
 }
 
 /// Returns a list of all currently running processes.
+#[must_use]
 pub fn all() -> Vec<OwnedProcess> {
     OwnedProcess::all()
 }
