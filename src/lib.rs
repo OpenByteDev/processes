@@ -1,5 +1,5 @@
 #![cfg(windows)]
-#![feature(maybe_uninit_uninit_array, maybe_uninit_slice, linked_list_cursors)]
+#![cfg_attr(feature = "nightly", feature(maybe_uninit_uninit_array, maybe_uninit_slice, linked_list_cursors))]
 #![warn(
     unsafe_op_in_unsafe_fn,
     missing_docs,

@@ -32,7 +32,8 @@ tempfile = { version = "3.3", default-features = false }
 [features]
 default = ["memory"]
 memory = []
-remote-alloc = ["memory"]
+nightly = []
+remote-alloc = ["memory", "nightly"]
 full = ["default"]
 doc-cfg = ["full"]
 

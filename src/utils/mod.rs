@@ -6,13 +6,14 @@ pub(crate) use array_buf::*;
 mod array_or_vec;
 pub(crate) use array_or_vec::*;
 
-#[allow(dead_code)]
 mod retry;
 pub(crate) use retry::*;
 
-#[allow(dead_code)]
-mod win_path_buf_utils;
-pub(crate) use win_path_buf_utils::*;
+mod win_ffi;
+pub(crate) use win_ffi::*;
 
 mod range;
 pub(crate) use range::*;
+
+mod polyfill;
+pub(crate) use polyfill::*;

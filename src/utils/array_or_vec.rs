@@ -4,7 +4,7 @@ use std::{
     vec,
 };
 
-use super::{ArrayBuf, ArrayBufIter};
+use super::{ArrayBuf, ArrayBufIter, maybe_uninit_uninit_array, maybe_uninit_slice_assume_init_mut};
 
 #[derive(Debug)]
 pub(crate) enum ArrayOrVecBuf<T, const SIZE: usize> {
@@ -28,7 +28,7 @@ impl<T, const SIZE: usize> ArrayOrVecBuf<T, SIZE> {
     }
 
     pub fn new_uninit_array() -> Self {
-        Self::from_partial_init_array(MaybeUninit::uninit_array(), 0)
+        Self::from_partial_init_array(maybe_uninit_uninit_array(), 0)
     }
 
     pub fn from_array(array: [T; SIZE]) -> Self {
@@ -134,7 +134,7 @@ impl<T, const SIZE: usize> ArrayOrVecBuf<T, SIZE> {
 impl<const SIZE: usize> ArrayOrVecBuf<u8, SIZE> {
     pub fn spare_writer(&mut self) -> impl std::io::Write + '_ {
         let spare = self.spare_capacity_mut();
-        unsafe { MaybeUninit::slice_assume_init_mut(spare) }
+        unsafe { maybe_uninit_slice_assume_init_mut(spare) }
     }
 }
 

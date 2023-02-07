@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use stopwatch2::Stopwatch;
 
+#[allow(dead_code)]
 pub(crate) fn retry_with_timeout<R>(
     operation: impl Fn() -> Option<R>,
     timeout: Duration,
@@ -9,6 +10,7 @@ pub(crate) fn retry_with_timeout<R>(
     retry_faillable_until_some_with_timeout(|| Ok::<_, ()>(operation()), timeout).unwrap()
 }
 
+#[allow(dead_code)]
 pub(crate) fn retry_faillable_with_timeout<R, E>(
     operation: impl Fn() -> Result<R, E>,
     timeout: Duration,

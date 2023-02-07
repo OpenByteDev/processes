@@ -3,7 +3,7 @@ use std::{cmp, io, mem::MaybeUninit, path::PathBuf};
 use widestring::U16Str;
 use winapi::shared::minwindef::MAX_PATH;
 
-use super::ArrayBuf;
+use super::{ArrayBuf, maybe_uninit_slice_assume_init_mut};
 
 pub enum FillPathBufResult {
     BufTooSmall { size_hint: Option<usize> },
@@ -32,7 +32,7 @@ pub fn get_win_ffi_string<const BUF_SIZE: usize, S>(
                 match try_fill(vec_buf[0].as_mut_ptr(), vec_buf.len()) {
                     FillPathBufResult::Success { actual_len } => {
                         let slice = unsafe {
-                            MaybeUninit::slice_assume_init_mut(&mut vec_buf[..actual_len])
+                            maybe_uninit_slice_assume_init_mut(&mut vec_buf[..actual_len])
                         };
                         let wide_str = widestring::U16Str::from_slice_mut(slice);
                         let copied = copy(wide_str);

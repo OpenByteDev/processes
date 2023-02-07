@@ -4,6 +4,8 @@ use std::{
     ptr,
 };
 
+use super::{maybe_uninit_slice_assume_init_ref, maybe_uninit_slice_assume_init_mut, maybe_uninit_uninit_array};
+
 #[derive(Debug)]
 pub(crate) struct ArrayBuf<T, const SIZE: usize> {
     data: [MaybeUninit<T>; SIZE],
@@ -13,7 +15,7 @@ pub(crate) struct ArrayBuf<T, const SIZE: usize> {
 impl<T, const SIZE: usize> ArrayBuf<T, SIZE> {
     pub fn new_uninit() -> Self {
         Self {
-            data: MaybeUninit::uninit_array(),
+            data: maybe_uninit_uninit_array(),
             len: 0,
         }
     }
@@ -45,11 +47,11 @@ impl<T, const SIZE: usize> ArrayBuf<T, SIZE> {
     }
 
     pub fn as_slice(&self) -> &[T] {
-        unsafe { MaybeUninit::slice_assume_init_ref(&self.data[..self.len]) }
+        unsafe { maybe_uninit_slice_assume_init_ref(&self.data[..self.len]) }
     }
 
     pub fn as_mut_slice(&mut self) -> &mut [T] {
-        unsafe { MaybeUninit::slice_assume_init_mut(&mut self.data[..self.len]) }
+        unsafe { maybe_uninit_slice_assume_init_mut(&mut self.data[..self.len]) }
     }
 
     pub fn spare_capacity_mut(&mut self) -> &mut [MaybeUninit<T>] {
