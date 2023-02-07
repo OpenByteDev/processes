@@ -19,8 +19,7 @@ use winapi::{
 
 use crate::{utils, BorrowedProcess, Process};
 
-/// A owned buffer in the memory space of a (remote) process.
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "process-memory")))]
+/// A owned buffer in the memory space of a process.
 #[derive(Debug)]
 pub struct ProcessMemoryBuffer<'a>(ProcessMemorySlice<'a>);
 
@@ -404,7 +403,7 @@ impl<'a> ProcessMemorySlice<'a> {
     }
 
     /// Flushes the CPU instruction cache for the whole buffer.
-    /// This may be necesary if the buffer is used to store dynamically generated code. For details see [`FlushInstructionCache`].
+    /// This may be necessary if the buffer is used to store dynamically generated code. For details see [`FlushInstructionCache`].
     pub fn flush_instruction_cache(&self) -> Result<(), io::Error> {
         let result = unsafe {
             FlushInstructionCache(self.process.as_raw_handle(), self.as_ptr().cast(), self.len)

@@ -30,7 +30,9 @@ current_platform = { version = "0.2", default-features = false }
 tempfile = { version = "3.3", default-features = false }
 
 [features]
-default = []
+default = ["memory"]
+memory = []
+remote-alloc = ["memory"]
 full = ["default"]
 doc-cfg = ["full"]
 

@@ -143,14 +143,16 @@ impl<P: Process> ProcessModule<P> {
         Self::find_local_by_name_or_abs_path(absolute_path.as_ref())
     }
 
-    pub(crate) fn find_local_by_name_or_abs_path(
+    #[doc(hidden)]
+    pub fn find_local_by_name_or_abs_path(
         module: &Path,
     ) -> Result<Option<ProcessModule<P>>, IoOrNulError> {
         let module = U16CString::from_os_str(module.as_os_str())?;
         Self::find_local_by_name_or_abs_path_wstr(&module).map_err(|e| e.into())
     }
 
-    pub(crate) fn find_local_by_name_or_abs_path_wstr(
+    #[doc(hidden)]
+    pub fn find_local_by_name_or_abs_path_wstr(
         module: &U16CStr,
     ) -> Result<Option<ProcessModule<P>>, io::Error> {
         let handle = unsafe { GetModuleHandleW(module.as_ptr()) };

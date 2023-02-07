@@ -1,6 +1,6 @@
 use std::{collections::LinkedList, io, mem, ptr::NonNull};
 
-use crate::process::{memory::ProcessMemoryBuffer, BorrowedProcess, Process};
+use crate::{memory::ProcessMemoryBuffer, BorrowedProcess, Process};
 
 pub trait RawAllocator {
     type Error;
@@ -17,6 +17,7 @@ pub struct DynamicMultiBufferAllocator<'a> {
 }
 
 impl<'a> DynamicMultiBufferAllocator<'a> {
+    #[must_use]
     pub const fn new(process: BorrowedProcess<'a>) -> Self {
         Self {
             process,
@@ -24,6 +25,7 @@ impl<'a> DynamicMultiBufferAllocator<'a> {
         }
     }
 
+    #[must_use]
     pub fn process(&self) -> BorrowedProcess<'_> {
         self.process.borrowed()
     }
@@ -37,6 +39,7 @@ impl<'a> DynamicMultiBufferAllocator<'a> {
         Ok(self.pages.last_mut().unwrap())
     }
 
+    #[must_use]
     pub fn count_allocated_bytes(&self) -> usize {
         self.pages
             .iter()
@@ -87,6 +90,7 @@ pub struct FixedBufferAllocator<'a> {
 }
 
 impl<'a> FixedBufferAllocator<'a> {
+    #[must_use]
     pub fn new(mem: ProcessMemoryBuffer<'a>) -> Self {
         let free_list = LinkedList::from([MemoryBlock {
             base: mem.as_ptr() as usize,
@@ -95,18 +99,22 @@ impl<'a> FixedBufferAllocator<'a> {
         Self { mem, free_list }
     }
 
+    #[must_use]
     pub const fn memory(&self) -> &ProcessMemoryBuffer<'a> {
         &self.mem
     }
 
+    #[must_use]
     pub fn process(&self) -> BorrowedProcess<'a> {
         self.memory().process()
     }
 
+    #[must_use]
     pub fn count_allocated_bytes(&self) -> usize {
         self.mem.len() - self.count_free_bytes()
     }
 
+    #[must_use]
     pub fn count_free_bytes(&self) -> usize {
         self.free_list.iter().map(|b| b.len).sum()
     }
@@ -194,22 +202,25 @@ impl RawAllocator for FixedBufferAllocator<'_> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MemoryBlock {
     base: usize,
     len: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Allocation {
     pub base: usize,
     pub len: usize,
 }
 
 impl Allocation {
+    #[must_use]
     pub const fn as_ptr(&self) -> NonNull<u8> {
         unsafe { NonNull::new_unchecked(self.as_raw_ptr()) }
     }
+
+    #[must_use]
     pub const fn as_raw_ptr(&self) -> *mut u8 {
         self.base as *mut u8
     }
@@ -227,7 +238,7 @@ pub enum AllocError {
 mod tests {
     use std::mem;
 
-    use crate::process::memory::ProcessMemorySlice;
+    use crate::memory::ProcessMemorySlice;
 
     use super::*;
 

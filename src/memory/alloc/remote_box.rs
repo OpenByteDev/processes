@@ -1,7 +1,7 @@
 use std::{cell::RefCell, io, marker::PhantomData, mem, ptr::NonNull, rc::Rc, slice};
 
-use crate::process::{
-    memory::{Allocation, DynamicMultiBufferAllocator, ProcessMemorySlice, RawAllocator},
+use crate::{
+    memory::{ProcessMemorySlice, alloc::{Allocation, DynamicMultiBufferAllocator, RawAllocator}},
     BorrowedProcess, OwnedProcess, Process,
 };
 
@@ -15,6 +15,7 @@ pub(crate) struct RemoteBoxAllocatorInner {
 }
 
 impl RemoteBoxAllocator {
+    #[must_use]
     pub fn new(process: OwnedProcess) -> Self {
         Self(Rc::new(RemoteBoxAllocatorInner {
             allocator: RefCell::new(DynamicMultiBufferAllocator::new(unsafe {
@@ -24,6 +25,7 @@ impl RemoteBoxAllocator {
         }))
     }
 
+    #[must_use]
     pub fn process(&self) -> BorrowedProcess<'_> {
         self.0.process.borrowed()
     }
@@ -71,6 +73,7 @@ pub struct RemoteAllocation {
 }
 
 impl RemoteAllocation {
+    #[must_use]
     const fn new(allocator: RemoteBoxAllocator, allocation: Allocation) -> Self {
         Self {
             allocation,
@@ -78,10 +81,12 @@ impl RemoteAllocation {
         }
     }
 
+    #[must_use]
     pub fn process(&self) -> BorrowedProcess<'_> {
         self.allocator.process()
     }
 
+    #[must_use]
     pub fn memory(&self) -> ProcessMemorySlice<'_> {
         unsafe {
             ProcessMemorySlice::from_raw_parts(
@@ -100,14 +105,22 @@ impl RemoteAllocation {
         self.memory().read(0, buf)
     }
 
+    #[must_use]
     pub const fn len(&self) -> usize {
         self.allocation.len
     }
 
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    #[must_use]
     pub const fn as_ptr(&self) -> NonNull<u8> {
         self.allocation.as_ptr()
     }
 
+    #[must_use]
     pub const fn as_raw_ptr(&self) -> *mut u8 {
         self.allocation.as_raw_ptr()
     }
@@ -126,6 +139,7 @@ pub struct RemoteBox<T: ?Sized> {
 }
 
 impl<T: ?Sized> RemoteBox<T> {
+    #[must_use]
     pub(crate) unsafe fn new(allocation: RemoteAllocation) -> Self {
         Self {
             allocation,
@@ -133,14 +147,17 @@ impl<T: ?Sized> RemoteBox<T> {
         }
     }
 
+    #[must_use]
     pub fn process(&self) -> BorrowedProcess<'_> {
         self.allocation.process()
     }
 
+    #[must_use]
     pub fn memory(&self) -> ProcessMemorySlice<'_> {
         self.allocation.memory()
     }
 
+    #[must_use]
     pub const fn as_raw_ptr(&self) -> *mut u8 {
         self.allocation.as_raw_ptr()
     }
@@ -157,6 +174,7 @@ impl<T: Sized + Copy> RemoteBox<T> {
         unsafe { self.allocation.memory().read_struct(0) }
     }
 
+    #[must_use]
     pub const fn as_ptr(&self) -> NonNull<T> {
         self.allocation.as_ptr().cast()
     }

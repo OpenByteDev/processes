@@ -38,6 +38,8 @@ mod module;
 pub use module::*;
 
 /// Module containing utilities for dealing with memory of another process.
+#[cfg(feature = "memory")]
+#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "memory")))]
 pub mod memory;
 
 /// Module containing error types for this crate.

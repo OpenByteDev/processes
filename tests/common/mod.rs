@@ -73,62 +73,6 @@ pub fn build_helper_crate(
 }
 
 #[macro_export]
-macro_rules! syringe_test {
-    (fn $test_name:ident ($process:ident : OwnedProcess, $payload_path:ident : &Path $(,)?) $body:block) => {
-        mod $test_name {
-            use super::*;
-            use dll_syringe::process::OwnedProcess;
-            use std::{
-                path::Path,
-                process::{Command, Stdio},
-            };
-
-            #[test]
-            #[cfg(any(
-                target_arch = "x86",
-                all(target_arch = "x86_64", feature = "into-x86-from-x64")
-            ))]
-            fn x86() {
-                test_with_setup(
-                    common::build_test_payload_x86().unwrap(),
-                    common::build_test_target_x86().unwrap(),
-                )
-            }
-
-            #[test]
-            #[cfg(target_arch = "x86_64")]
-            fn x86_64() {
-                test_with_setup(
-                    common::build_test_payload_x64().unwrap(),
-                    common::build_test_target_x64().unwrap(),
-                )
-            }
-
-            fn test_with_setup(
-                payload_path: impl AsRef<Path>,
-                target_path: impl AsRef<Path>,
-            ) {
-                let dummy_process: OwnedProcess = Command::new(target_path.as_ref())
-                    .stdin(Stdio::null())
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .spawn().unwrap()
-                    .into();
-
-                let _guard = dummy_process.try_clone().unwrap().kill_on_drop();
-
-                test(dummy_process, payload_path.as_ref())
-            }
-
-            fn test(
-                $process : OwnedProcess,
-                $payload_path : &Path,
-            ) $body
-        }
-    };
-}
-
-#[macro_export]
 macro_rules! process_test {
     (fn $test_name:ident ($process:ident : OwnedProcess $(,)?) $body:block) => {
         mod $test_name {
