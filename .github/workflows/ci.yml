@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        toolchain: ["nightly"]
+        toolchain: ["nightly", "stable"]
         os: ["windows-latest"]
         target: ["x86_64-pc-windows-msvc", "i686-pc-windows-msvc"]
         include:
@@ -79,7 +79,5 @@ jobs:
             toolchain: nightly
             components: clippy
             override: true
-      - uses: actions-rs/clippy-check@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-features
+      - name: Run clippy
+        run: cargo clippy --all --all-targets --all-features
