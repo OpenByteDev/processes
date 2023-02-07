@@ -45,7 +45,7 @@ jobs:
       run: cargo build --target ${{ matrix.target }}
       
     - name: Test
-      run: cargo test --target ${{ matrix.target }} --all-targets --all-features -- --nocapture
+      run: cargo test --target ${{ matrix.target }} --all-targets ${{ matrix.toolchain == 'nightly' && '--all-features ' || '' }} -- --nocapture
 
   documentation:
     runs-on: ${{ matrix.os }}
