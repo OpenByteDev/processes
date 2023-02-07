@@ -14,8 +14,7 @@ categories = []
 keywords = ["process", "windows", "module"]
 
 [dependencies]
-winapi = { version = "0.3", features = ["processthreadsapi", "libloaderapi", "memoryapi", "wow64apiset"], default-features = false }
-cstr = { version = "0.2", default-features = false }
+winapi = { version = "0.3", features = ["processthreadsapi", "wow64apiset"], default-features = false }
 sysinfo = { version = "0.27", default-features = false }
 widestring = { version = "1.0", features = ["std", "alloc"], default-features = false }
 path-absolutize = { version = "3.0", default-features = false }
@@ -23,7 +22,6 @@ stopwatch2 = { version = "2.0", default-features = false }
 thiserror = { version = "1.0", default-features = false }
 shrinkwraprs = { version = "0.3", default-features = false }
 same-file = { version = "1.0", default-features = false }
-serde = { version = "1.0", default-features = false, optional = true }
 
 [dev-dependencies]
 current_platform = { version = "0.2", default-features = false }
@@ -31,7 +29,7 @@ tempfile = { version = "3.3", default-features = false }
 
 [features]
 default = ["memory"]
-memory = []
+memory = ["winapi/memoryapi"]
 nightly = []
 remote-alloc = ["memory", "nightly"]
 full = ["default"]
