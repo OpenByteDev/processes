@@ -21,7 +21,7 @@
     clippy::missing_errors_doc,
     clippy::borrow_as_ptr
 )]
-// #![cfg_attr(feature = "doc-cfg", doc = include_str!("../crate-doc.md"))]
+#![cfg_attr(feature = "doc-cfg", doc = include_str!("../crate-doc.md"))]
 #![cfg_attr(not(feature = "doc-cfg"), allow(missing_docs))]
 #![cfg_attr(feature = "doc-cfg", feature(doc_cfg))]
 

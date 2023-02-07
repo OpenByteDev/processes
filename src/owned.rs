@@ -176,7 +176,6 @@ impl OwnedProcess {
     pub unsafe fn from_pid_with_access(pid: u32, access: u32) -> Result<OwnedProcess, io::Error> {
         let handle = unsafe {
             OpenProcess(
-                // access required for performing dll injection
                 access,
                 FALSE,
                 pid,
