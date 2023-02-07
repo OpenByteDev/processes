@@ -15,7 +15,7 @@ pub enum IoOrNulError {
 
 /// Error enum for errors during a call to [`ProcessModule::get_local_procedure_address`].
 ///
-/// [`ProcessModule::get_local_procedure_address`]: crate::process::ProcessModule::get_local_procedure_address
+/// [`ProcessModule::get_local_procedure_address`]: crate::ProcessModule::get_local_procedure_address
 #[derive(Debug, Error)]
 pub enum GetLocalProcedureAddressError {
     /// Variant representing an illegal interior nul value.
