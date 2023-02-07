@@ -40,7 +40,30 @@ pub use module::*;
 /// Module containing utilities for dealing with memory of another process.
 pub mod memory;
 
+/// Module containing error types for this crate.
 pub mod error;
+
+/// Module containing function pointer related types.
 pub mod function;
 
 mod utils;
+
+/// Returns an abstraction for the current process.
+pub fn current() -> BorrowedProcess<'static> {
+    BorrowedProcess::current()
+}
+
+/// Returns a list of all currently running processes.
+pub fn all() -> Vec<OwnedProcess> {
+    OwnedProcess::all()
+}
+
+/// Finds all processes whose name contains the given string.
+pub fn find_all_by_name(name: impl AsRef<str>) -> Vec<OwnedProcess> {
+    OwnedProcess::find_all_by_name(name)
+}
+
+/// Finds the first process whose name contains the given string.
+pub fn find_first_by_name(name: impl AsRef<str>) -> Option<OwnedProcess> {
+    OwnedProcess::find_first_by_name(name)
+}
