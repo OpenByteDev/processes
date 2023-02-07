@@ -349,7 +349,8 @@ impl<P: Process> ProcessModule<P> {
     }
     */
 
-    pub(crate) fn get_local_procedure_address_cstr(
+    #[doc(hidden)]
+    pub fn get_local_procedure_address_cstr(
         &self,
         proc_name: &CStr,
     ) -> Result<RawFunctionPtr, io::Error> {
