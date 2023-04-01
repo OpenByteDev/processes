@@ -8,6 +8,7 @@ use super::{ProcessMemoryBuffer, ProcessMemorySlice};
 #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "process-memory")))]
 #[derive(Debug, Clone, Copy)]
 pub struct ProcessMemory<'a> {
+    /// The process that owns the memory.
     pub process: BorrowedProcess<'a>,
 }
 

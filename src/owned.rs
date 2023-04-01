@@ -25,7 +25,7 @@ use winapi::{
     },
 };
 
-use crate::{BorrowedProcess, OwnedProcessModule, Process, ProcessHandle, raw};
+use crate::{raw, BorrowedProcess, OwnedProcessModule, Process, ProcessHandle};
 
 /// A struct representing a running process.
 /// This struct owns the underlying process handle (see also [`BorrowedProcess`] for a borrowed version).

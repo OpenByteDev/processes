@@ -21,14 +21,15 @@ use winapi::{
             GetProcessId, TerminateProcess,
         },
         synchapi::WaitForSingleObject,
-        winbase::{QueryFullProcessImageNameW, INFINITE, WAIT_FAILED}
+        winbase::{QueryFullProcessImageNameW, INFINITE, WAIT_FAILED},
     },
 };
 
 use crate::{
     memory::ProcessMemory,
+    raw,
     utils::{get_win_ffi_path, TryFillBufResult},
-    BorrowedProcess, ProcessModule, raw,
+    BorrowedProcess, ProcessModule,
 };
 
 /// A handle to a running process.

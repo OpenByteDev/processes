@@ -1,14 +1,10 @@
-use std::{
-    io,
-    mem::MaybeUninit,
-    os::windows:: raw::HANDLE,
-};
+use std::{io, mem::MaybeUninit, os::windows::raw::HANDLE};
 
-use ntapi::ntexapi::{SYSTEM_PROCESS_INFORMATION, NtQuerySystemInformation, SystemProcessInformation};
+use ntapi::ntexapi::{
+    NtQuerySystemInformation, SystemProcessInformation, SYSTEM_PROCESS_INFORMATION,
+};
 use winapi::{
-    shared::{
-        ntstatus::STATUS_INFO_LENGTH_MISMATCH,
-    },
+    shared::ntstatus::STATUS_INFO_LENGTH_MISMATCH,
     um::{
         winnt::{
             IMAGE_FILE_MACHINE_ALPHA, IMAGE_FILE_MACHINE_ALPHA64, IMAGE_FILE_MACHINE_AM33,
@@ -50,8 +46,7 @@ pub fn iter_process_info() -> Result<impl Iterator<Item = SYSTEM_PROCESS_INFORMA
             let next_offset = self.next_offset?;
             let next_process_info = unsafe { self.buf.as_ptr().add(next_offset) };
 
-            let process_info: &SYSTEM_PROCESS_INFORMATION =
-                unsafe { &*next_process_info.cast() };
+            let process_info: &SYSTEM_PROCESS_INFORMATION = unsafe { &*next_process_info.cast() };
             let offset_to_next = process_info.NextEntryOffset as usize;
             if offset_to_next == 0 {
                 self.next_offset = None;

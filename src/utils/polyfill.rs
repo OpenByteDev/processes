@@ -4,7 +4,7 @@ use std::mem::MaybeUninit;
 #[inline(always)]
 pub(crate) fn maybe_uninit_uninit_array<T, const LEN: usize>() -> [MaybeUninit<T>; LEN] {
     #[cfg(feature = "nightly")]
-    MaybeUninit::<T>::uninit_array::<LEN>();
+    return MaybeUninit::<T>::uninit_array::<LEN>();
     #[cfg(not(feature = "nightly"))]
     #[allow(clippy::uninit_assumed_init)]
     unsafe {
