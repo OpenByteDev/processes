@@ -2,10 +2,6 @@
 mod array_buf;
 pub(crate) use array_buf::*;
 
-#[allow(dead_code)]
-mod array_or_vec;
-pub(crate) use array_or_vec::*;
-
 mod retry;
 pub(crate) use retry::*;
 

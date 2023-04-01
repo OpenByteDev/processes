@@ -19,7 +19,16 @@ use winapi::{
 
 use crate::{utils, BorrowedProcess, Process};
 
-/// A owned buffer in the memory space of a process.
+/// Returns the memory page size of the operating system.
+#[must_use]
+pub fn os_page_size() -> usize {
+    // TODO: use OnceCell
+    let mut system_info = MaybeUninit::uninit();
+    unsafe { GetSystemInfo(system_info.as_mut_ptr()) };
+    unsafe { system_info.assume_init() }.dwPageSize as usize
+}
+
+/// A owned buffer in the memory space of some process.
 #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "process-memory")))]
 #[derive(Debug)]
 pub struct ProcessMemoryBuffer<'a>(ProcessMemorySlice<'a>);
@@ -54,7 +63,7 @@ impl<'a> ProcessMemoryBuffer<'a> {
     }
     /// Allocates a new buffer with the size of a memory page in the given process.
     pub fn allocate_page(process: BorrowedProcess<'a>) -> Result<Self, io::Error> {
-        Self::allocate_code(process, Self::os_page_size())
+        Self::allocate_code(process, os_page_size())
     }
     /// Allocates a new data buffer of the given length in the given process.
     pub fn allocate_data(process: BorrowedProcess<'a>, len: usize) -> Result<Self, io::Error> {
@@ -62,9 +71,9 @@ impl<'a> ProcessMemoryBuffer<'a> {
     }
     /// Allocates a new data buffer with the size of a memory page in the given process.
     pub fn allocate_data_page(process: BorrowedProcess<'a>) -> Result<Self, io::Error> {
-        Self::allocate_data(process, Self::os_page_size())
+        Self::allocate_data(process, os_page_size())
     }
-    /// Allocates a new codea buffer of the given length in the given process.
+    /// Allocates a new code buffer of the given length in the given process.
     pub fn allocate_code(process: BorrowedProcess<'a>, len: usize) -> Result<Self, io::Error> {
         Self::allocate_with_options(
             process,
@@ -75,7 +84,7 @@ impl<'a> ProcessMemoryBuffer<'a> {
     }
     /// Allocates a new code buffer with the size of a memory page in the given process.
     pub fn allocate_code_page(process: BorrowedProcess<'a>) -> Result<Self, io::Error> {
-        Self::allocate_code(process, Self::os_page_size())
+        Self::allocate_code(process, os_page_size())
     }
     fn allocate_with_options(
         process: BorrowedProcess<'a>,
@@ -105,13 +114,13 @@ impl<'a> ProcessMemoryBuffer<'a> {
         Self::allocate_data(process, mem::size_of::<T>())
     }
 
-    /// Allocates a new buffer with enough space to store a value of type `T` in the given process.
-    pub fn allocate_and_write<T: ?Sized>(
+    /// Allocates a new buffer with enough space to store the given value in the given process and copies it.
+    pub fn allocate_and_write<T: ?Sized + Copy>(
         process: BorrowedProcess<'a>,
         s: &T,
     ) -> Result<Self, io::Error> {
         let buf = Self::allocate_data(process, mem::size_of_val(s))?;
-        buf.write_struct(0, s)?;
+        buf.write_struct(s)?;
         Ok(buf)
     }
 
@@ -133,7 +142,8 @@ impl<'a> ProcessMemoryBuffer<'a> {
         Self(unsafe { ProcessMemorySlice::from_raw_parts(ptr, len, process) })
     }
 
-    /// Constructs a new buffer from the given raw parts.
+    /// Destructs this buffer into its raw parts.
+    /// This function leaks the underlying allocation.
     #[must_use]
     pub fn into_raw_parts(self) -> (*mut u8, usize, BorrowedProcess<'a>) {
         let parts = (self.ptr, self.len, self.process);
@@ -141,18 +151,7 @@ impl<'a> ProcessMemoryBuffer<'a> {
         parts
     }
 
-    /// Leaks the buffer and returns the underlying memory slice if the buffer is allocated in the current process.
-    pub fn into_dangling_local_slice(self) -> Result<&'static mut [u8], Self> {
-        if self.process.is_current() {
-            let slice = unsafe { slice::from_raw_parts_mut(self.ptr, self.len) };
-            self.leak();
-            Ok(slice)
-        } else {
-            Err(self)
-        }
-    }
-
-    /// Leaks the buffer and returns a [`ProcessMemorySlice`] spanning this buffer.
+    /// Leaks this buffer and returns a [`ProcessMemorySlice`] spanning it.
     #[allow(clippy::must_use_candidate)]
     pub fn leak(self) -> ProcessMemorySlice<'a> {
         let this = ManuallyDrop::new(self);
@@ -161,20 +160,19 @@ impl<'a> ProcessMemoryBuffer<'a> {
 
     /// Constructs a new slice spanning the whole buffer.
     #[must_use]
-    pub fn as_slice(&self) -> &ProcessMemorySlice<'a> {
-        self.as_ref()
-    }
-
-    /// Constructs a new mutable slice spanning the whole buffer.
-    #[must_use]
-    pub fn as_mut_slice(&mut self) -> &mut ProcessMemorySlice<'a> {
-        self.as_mut()
+    pub fn as_slice(&self) -> ProcessMemorySlice<'a> {
+        self.0
     }
 
     /// Frees the buffer.
+    ///
+    /// # Note
+    /// The underlying allocation of this buffer is automatically freed on [`Drop`], but this function allows
+    /// for more explicity and allows handling any error that occur.
     pub fn free(mut self) -> Result<(), (Self, io::Error)> {
         unsafe { self._free() }.map_err(|e| (self, e))
     }
+
     unsafe fn _free(&mut self) -> Result<(), io::Error> {
         let result = unsafe {
             VirtualFreeEx(
@@ -190,14 +188,6 @@ impl<'a> ProcessMemoryBuffer<'a> {
         } else {
             Err(io::Error::last_os_error())
         }
-    }
-
-    /// Returns the memory page size of the operating system.
-    #[must_use]
-    pub fn os_page_size() -> usize {
-        let mut system_info = MaybeUninit::uninit();
-        unsafe { GetSystemInfo(system_info.as_mut_ptr()) };
-        unsafe { system_info.assume_init() }.dwPageSize as usize
     }
 }
 
@@ -226,7 +216,6 @@ impl<'a> ProcessMemorySlice<'a> {
     /// # Safety
     /// The caller must ensure that the designated region of memory
     /// - is valid
-    /// - was allocated using [`VirtualAllocEx`]
     /// - can be read using [`ReadProcessMemory`]
     /// - can be written to using [`WriteProcessMemory`]
     /// - will live as long as the slice is used
@@ -243,46 +232,46 @@ impl<'a> ProcessMemorySlice<'a> {
         }
     }
 
-    /// Returns whether the memory is allocated in the current process.
+    /// Returns whether this slice is in the memory space of the current process.
     #[must_use]
     pub fn is_local(&self) -> bool {
         self.process().is_current()
     }
 
-    /// Returns whether the memory is allocated in another process.
+    /// Returns whether this slice is in the memory space of another process.
     #[must_use]
     pub fn is_remote(&self) -> bool {
         !self.is_local()
     }
 
-    /// Returns the process the buffer is allocated in.
+    /// Returns the process that owns the memory of this slice.
     #[must_use]
     pub const fn process(&self) -> BorrowedProcess<'a> {
         self.process
     }
 
-    /// Returns the length of the buffer.
+    /// Returns the length of the slice.
     #[must_use]
     pub const fn len(&self) -> usize {
         self.len
     }
 
-    /// Returns whether the buffer is empty.
+    /// Returns whether the slice is empty.
     #[must_use]
     pub const fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
-    /// Copies the contents of this buffer starting from the given offset to the given local buffer.
+    /// Copies the contents of this slice to the given local buffer.
     ///
     /// # Panics
-    /// This function will panic if the given offset plus the given buffer length exceeds this buffer's length.
-    pub fn read(&self, offset: usize, buf: &mut [u8]) -> Result<(), io::Error> {
-        assert!(offset + buf.len() <= self.len, "read out of bounds");
+    /// This function will panic if this slice is smaller than the given buffer.
+    pub fn read(&self, buf: &mut [u8]) -> Result<(), io::Error> {
+        assert!(buf.len() <= self.len, "read out of bounds");
 
         if self.is_local() {
             unsafe {
-                ptr::copy(self.ptr.add(offset), buf.as_mut_ptr(), buf.len());
+                ptr::copy(self.ptr, buf.as_mut_ptr(), buf.len());
             }
             return Ok(());
         }
@@ -291,7 +280,7 @@ impl<'a> ProcessMemorySlice<'a> {
         let result = unsafe {
             ReadProcessMemory(
                 self.process.as_raw_handle(),
-                self.ptr.add(offset).cast(),
+                self.ptr.cast(),
                 buf.as_mut_ptr().cast(),
                 buf.len(),
                 &mut bytes_read,
@@ -305,31 +294,61 @@ impl<'a> ProcessMemorySlice<'a> {
         }
     }
 
-    /// Reads a value of type `T` from this buffer starting from the given offset.
-    ///
-    /// # Panics
-    /// This function will panic if the given offset plus the size of the value exceeds this buffer's length.
+    /// Copies the contents of this slice to the given local buffer.
     ///
     /// # Safety
-    /// The caller must ensure that the designated region of memory contains a valid instance of type `T` at the given offset.
-    pub unsafe fn read_struct<T>(&self, offset: usize) -> Result<T, io::Error> {
+    /// The caller must ensure that the designated region of memory contains valid instances of type `T`.
+    ///
+    /// # Panics
+    /// This function will panic if this slice is smaller than the given buffer.
+    pub unsafe fn read_buf<T: Copy>(&self, buf: &mut [T]) -> Result<(), io::Error> {
+        let byte_buf = unsafe {
+            slice::from_raw_parts_mut(buf.as_mut_ptr().cast(), buf.len() * mem::size_of::<T>())
+        };
+        self.read(byte_buf)
+    }
+
+    /// Copies `len` instances of type `T` at the start of this slice into a newly allocated local [`Vec<T>`].
+    ///
+    /// # Safety
+    /// The caller must ensure that the designated region of memory contains valid instances of type `T`.
+    ///
+    /// # Panics
+    /// This function will panic if this slice is smaller than the given buffer.
+    pub unsafe fn read_vec<T: Copy>(&self, len: usize) -> Result<Vec<T>, io::Error> {
+        let mut buf = Vec::with_capacity(len);
+        unsafe { self.read_buf(buf.spare_capacity_mut())? };
+        unsafe { buf.set_len(len) };
+        Ok(buf)
+    }
+
+    /// Reads a value of type `T` from the start this slice and copies it into local memory space.
+    ///
+    /// # Panics
+    /// This function will panic if the size of the value exceeds this slice's length.
+    ///
+    /// # Safety
+    /// The caller must ensure that the designated region of memory contains a valid instance of type `T`.
+    pub unsafe fn read_struct<T: Copy>(&self) -> Result<T, io::Error> {
         let mut uninit_value = MaybeUninit::<T>::uninit();
-        self.read(offset, unsafe {
+        // TODO: use uninit_value.as_bytes instead
+        let buf = unsafe {
             slice::from_raw_parts_mut(uninit_value.as_mut_ptr().cast(), mem::size_of::<T>())
-        })?;
+        };
+        self.read(buf)?;
         Ok(unsafe { uninit_value.assume_init() })
     }
 
-    /// Copies the contents of the given local buffer to this buffer at the given offset.
+    /// Copies the contents of the given local buffer to this slice.
     ///
     /// # Panics
-    /// This function will panic if the given offset plus the size of the local buffer exceeds this buffer's length.
-    pub fn write(&self, offset: usize, buf: &[u8]) -> Result<(), io::Error> {
-        assert!(offset + buf.len() <= self.len, "write out of bounds");
+    /// This function will panic if the size of the local buffer exceeds this slice's length.
+    pub fn write(&self, buf: &[u8]) -> Result<(), io::Error> {
+        assert!(buf.len() <= self.len, "write out of bounds");
 
         if self.is_local() {
             unsafe {
-                ptr::copy(buf.as_ptr(), self.ptr.add(offset), buf.len());
+                ptr::copy(buf.as_ptr(), self.ptr, buf.len());
             }
             return Ok(());
         }
@@ -338,7 +357,7 @@ impl<'a> ProcessMemorySlice<'a> {
         let result = unsafe {
             WriteProcessMemory(
                 self.process.as_raw_handle(),
-                self.ptr.add(offset).cast(),
+                self.ptr.cast(),
                 buf.as_ptr().cast(),
                 buf.len(),
                 &mut bytes_written,
@@ -352,17 +371,26 @@ impl<'a> ProcessMemorySlice<'a> {
         }
     }
 
-    /// Writes a value of type `T` to this buffer at the given offset.
+    /// Copies the contents of the given local buffer to the memory region of this slice.
     ///
     /// # Panics
-    /// This function will panic if the given offset plus the given buffer length exceeds this buffer's length.
-    pub fn write_struct<T: ?Sized>(&self, offset: usize, s: &T) -> Result<(), io::Error> {
-        self.write(offset, unsafe {
-            slice::from_raw_parts(s as *const T as *const u8, mem::size_of_val(s))
-        })
+    /// This function will panic if the size of the local buffer exceeds this slice's length.
+    pub fn write_buf<T: Copy>(&self, buf: &[T]) -> Result<(), io::Error> {
+        let byte_buf =
+            unsafe { slice::from_raw_parts(buf.as_ptr().cast(), buf.len() * mem::size_of::<T>()) };
+        self.write(byte_buf)
     }
 
-    /// Returns a pointer to the start of the buffer.
+    /// Writes a value of type `T` to the start of this slice.
+    ///
+    /// # Panics
+    /// This function will panic if the value's size exceeds this buffer's length.
+    pub fn write_struct<T: ?Sized + Copy>(&self, s: &T) -> Result<(), io::Error> {
+        let buf = unsafe { slice::from_raw_parts(s as *const T as *const u8, mem::size_of_val(s)) };
+        self.write(buf)
+    }
+
+    /// Returns a pointer to the start of this slice.
     ///
     /// # Note
     /// The returned pointer is only valid in the target process.
@@ -371,7 +399,7 @@ impl<'a> ProcessMemorySlice<'a> {
         self.ptr
     }
 
-    /// Returns a slice of this buffer.
+    /// Returns a new slice spanning a subregion of this slice.
     #[must_use]
     pub fn slice(&self, bounds: impl RangeBounds<usize>) -> Self {
         let range = utils::range_from_bounds(self.ptr as usize, self.len, &bounds);
@@ -383,8 +411,8 @@ impl<'a> ProcessMemorySlice<'a> {
         }
     }
 
-    /// Constructs a new slice spanning the whole buffer.
-    /// This function will return [None] for remote memory buffers.
+    /// Constructs a new local slice spanning the memory of this slice.
+    /// This function will return [None] for remote memory slices.
     #[must_use]
     pub fn as_local_slice(&self) -> Option<&[u8]> {
         if self.is_local() {
@@ -394,8 +422,8 @@ impl<'a> ProcessMemorySlice<'a> {
         }
     }
 
-    /// Constructs a new mutable slice spanning the whole buffer.
-    /// This function will return [None] for remote memory buffers.
+    /// Constructs a new mutable slice spanning the memory of this slice.
+    /// This function will return [None] for remote memory slices.
     #[must_use]
     pub fn as_local_slice_mut(&mut self) -> Option<&mut [u8]> {
         if self.is_local() {
@@ -405,8 +433,10 @@ impl<'a> ProcessMemorySlice<'a> {
         }
     }
 
-    /// Flushes the CPU instruction cache for the whole buffer.
-    /// This may be necesary if the buffer is used to store dynamically generated code. For details see [`FlushInstructionCache`].
+    /// Flushes the CPU instruction cache for the whole slice.
+    /// This may be necesary if the memory is used to store dynamically generated code. For details see [`FlushInstructionCache`].
+    ///
+    /// [`FlushInstructionCache`]: https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-flushinstructioncache
     pub fn flush_instruction_cache(&self) -> Result<(), io::Error> {
         let result = unsafe {
             FlushInstructionCache(self.process.as_raw_handle(), self.as_ptr().cast(), self.len)

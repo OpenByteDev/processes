@@ -1,5 +1,8 @@
 #![cfg(windows)]
-#![cfg_attr(feature = "nightly", feature(maybe_uninit_uninit_array, maybe_uninit_slice, linked_list_cursors))]
+#![cfg_attr(
+    feature = "nightly",
+    feature(maybe_uninit_uninit_array, maybe_uninit_slice, linked_list_cursors)
+)]
 #![warn(
     unsafe_op_in_unsafe_fn,
     missing_docs,
@@ -25,6 +28,8 @@
 #![cfg_attr(not(feature = "doc-cfg"), allow(missing_docs))]
 #![cfg_attr(feature = "doc-cfg", feature(doc_cfg))]
 
+use std::io;
+
 mod process;
 pub use process::*;
 
@@ -36,6 +41,8 @@ pub use borrowed::*;
 
 mod module;
 pub use module::*;
+
+pub(crate) mod raw;
 
 /// Module containing utilities for dealing with memory of another process.
 #[cfg(feature = "memory")]
@@ -57,17 +64,23 @@ pub fn current() -> BorrowedProcess<'static> {
 }
 
 /// Returns a list of all currently running processes.
-#[must_use]
-pub fn all() -> Vec<OwnedProcess> {
+pub fn all() -> Result<impl Iterator<Item = OwnedProcess>, io::Error> {
     OwnedProcess::all()
 }
 
+/// Finds the process with the given pid.
+pub fn from_pid(pid: u32) -> Result<OwnedProcess, io::Error> {
+    OwnedProcess::from_pid(pid)
+}
+
 /// Finds all processes whose name contains the given string.
-pub fn find_all_by_name(name: impl AsRef<str>) -> Vec<OwnedProcess> {
+pub fn find_all_by_name(
+    name: impl AsRef<str>,
+) -> Result<impl Iterator<Item = OwnedProcess>, io::Error> {
     OwnedProcess::find_all_by_name(name)
 }
 
 /// Finds the first process whose name contains the given string.
-pub fn find_first_by_name(name: impl AsRef<str>) -> Option<OwnedProcess> {
+pub fn find_first_by_name(name: impl AsRef<str>) -> Result<Option<OwnedProcess>, io::Error> {
     OwnedProcess::find_first_by_name(name)
 }

@@ -122,7 +122,7 @@ fn current_process_is_current() {
 
 #[test]
 fn remote_process_is_not_current() {
-    let mut all = OwnedProcess::all().into_iter();
+    let mut all = OwnedProcess::all().unwrap();
     let process_a = all.next().unwrap();
     let process_b = all.next().unwrap();
     assert!(!process_a.is_current() || !process_b.is_current());

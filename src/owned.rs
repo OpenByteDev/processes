@@ -13,13 +13,19 @@ use std::{
     time::Duration,
 };
 
-use sysinfo::{PidExt, ProcessExt, SystemExt};
 use winapi::{
     shared::minwindef::FALSE,
-    um::{processthreadsapi::OpenProcess, winnt::PROCESS_ALL_ACCESS},
+    um::{
+        processthreadsapi::OpenProcess,
+        winnt::{
+            PROCESS_CREATE_THREAD, PROCESS_DUP_HANDLE, PROCESS_QUERY_INFORMATION,
+            PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE, PROCESS_VM_READ,
+            PROCESS_VM_WRITE, SYNCHRONIZE,
+        },
+    },
 };
 
-use crate::{BorrowedProcess, OwnedProcessModule, Process};
+use crate::{BorrowedProcess, OwnedProcessModule, Process, ProcessHandle, raw};
 
 /// A struct representing a running process.
 /// This struct owns the underlying process handle (see also [`BorrowedProcess`] for a borrowed version).
@@ -57,7 +63,7 @@ impl IntoRawHandle for OwnedProcess {
 }
 
 impl FromRawHandle for OwnedProcess {
-    unsafe fn from_raw_handle(handle: HANDLE) -> Self {
+    unsafe fn from_raw_handle(handle: ProcessHandle) -> Self {
         Self(unsafe { OwnedHandle::from_raw_handle(handle) })
     }
 }
@@ -169,7 +175,19 @@ impl Process for OwnedProcess {
 impl OwnedProcess {
     /// Creates a new instance from the given pid.
     pub fn from_pid(pid: u32) -> Result<OwnedProcess, io::Error> {
-        unsafe { Self::from_pid_with_access(pid, PROCESS_ALL_ACCESS) }
+        unsafe {
+            Self::from_pid_with_access(
+                pid,
+                PROCESS_CREATE_THREAD
+                    | PROCESS_DUP_HANDLE
+                    | PROCESS_QUERY_INFORMATION
+                    | PROCESS_TERMINATE
+                    | PROCESS_VM_READ
+                    | PROCESS_VM_WRITE
+                    | SYNCHRONIZE
+                    | PROCESS_QUERY_LIMITED_INFORMATION,
+            )
+        }
     }
 
     /// Creates a new instance from the given pid and the given privileges.
@@ -187,49 +205,32 @@ impl OwnedProcess {
     }
 
     /// Returns a list of all currently running processes.
-    #[must_use]
-    pub fn all() -> Vec<OwnedProcess> {
-        // TODO: avoid using sysinfo for this
-        // TODO: deduplicate code
-        let mut system = sysinfo::System::new();
-        system.refresh_processes();
-        system
-            .processes()
-            .values()
-            .map(|process| process.pid())
-            .filter_map(|pid| OwnedProcess::from_pid(pid.as_u32()).ok())
-            .collect()
+    pub fn all() -> Result<impl Iterator<Item = OwnedProcess>, io::Error> {
+        let iter = raw::iter_process_ids()?
+            .map(OwnedProcess::from_pid)
+            .filter_map(|r| r.ok());
+        Ok(iter)
     }
 
     /// Finds all processes whose name contains the given string.
-    #[must_use]
-    pub fn find_all_by_name(name: impl AsRef<str>) -> Vec<OwnedProcess> {
-        // TODO: avoid using sysinfo for this
-        // TODO: deduplicate code
-        let mut system = sysinfo::System::new();
-        system.refresh_processes();
-        system
-            .processes()
-            .values()
-            .filter(move |process| process.name().contains(name.as_ref()))
-            .map(|process| process.pid())
-            .filter_map(|pid| OwnedProcess::from_pid(pid.as_u32()).ok())
-            .collect()
+    pub fn find_all_by_name(
+        name: impl AsRef<str>,
+    ) -> Result<impl Iterator<Item = OwnedProcess>, io::Error> {
+        let target_name = name.as_ref().to_ascii_lowercase();
+        // TODO: optimize
+        let iter = Self::all()?.filter(move |process| {
+            let name = match process.base_name() {
+                Ok(name) => name,
+                Err(_) => return false,
+            };
+            name.to_ascii_lowercase().contains(&target_name)
+        });
+        Ok(iter)
     }
 
     /// Finds the first process whose name contains the given string.
-    #[must_use]
-    pub fn find_first_by_name(name: impl AsRef<str>) -> Option<OwnedProcess> {
-        // TODO: avoid using sysinfo for this
-        // TODO: deduplicate code
-        let mut system = sysinfo::System::new();
-        system.refresh_processes();
-        system
-            .processes()
-            .values()
-            .filter(move |process| process.name().contains(name.as_ref()))
-            .map(|process| process.pid())
-            .find_map(|pid| OwnedProcess::from_pid(pid.as_u32()).ok())
+    pub fn find_first_by_name(name: impl AsRef<str>) -> Result<Option<OwnedProcess>, io::Error> {
+        Ok(Self::find_all_by_name(name)?.next())
     }
 
     /// Creates a new instance from the given child process.
@@ -244,6 +245,7 @@ impl OwnedProcess {
     /// - This method is unsafe as the returned instance can outlive the owned instance,
     /// thus the caller must guarantee that the owned instance outlives the returned instance.
     #[must_use]
+    #[doc(hidden)]
     pub unsafe fn borrowed_static(&self) -> BorrowedProcess<'static> {
         unsafe {
             BorrowedProcess::from_handle_unchecked(BorrowedHandle::borrow_raw(self.as_raw_handle()))

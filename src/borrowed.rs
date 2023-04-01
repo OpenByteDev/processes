@@ -1,6 +1,5 @@
 use std::{
     borrow::Cow,
-    cmp,
     hash::{Hash, Hasher},
     io,
     mem::{self, MaybeUninit},
@@ -9,25 +8,30 @@ use std::{
         raw::HANDLE,
     },
     path::Path,
+    ptr::NonNull,
     time::Duration,
 };
 
-use winapi::{
-    shared::{
-        minwindef::{FALSE, HMODULE},
-        winerror::ERROR_PARTIAL_COPY,
+use memoffset::offset_of;
+use ntapi::{
+    ntldr::LDR_DATA_TABLE_ENTRY,
+    ntpsapi::{
+        NtQueryInformationProcess, ProcessBasicInformation, PEB_LDR_DATA, PROCESS_BASIC_INFORMATION,
     },
+    ntrtl::RtlNtStatusToDosError,
+};
+use winapi::{
+    shared::{minwindef::FALSE, ntdef::LIST_ENTRY},
     um::{
-        handleapi::DuplicateHandle,
-        processthreadsapi::GetCurrentProcess,
-        psapi::{EnumProcessModulesEx, LIST_MODULES_ALL},
+        handleapi::DuplicateHandle, processthreadsapi::GetCurrentProcess,
         winnt::DUPLICATE_SAME_ACCESS,
     },
 };
+use winresult::NtStatus;
 
 use crate::{
-    utils::{retry_faillable_until_some_with_timeout, ArrayOrVecBuf},
-    ModuleHandle, OwnedProcess, Process, ProcessModule,
+    memory::ProcessMemory, utils::retry_faillable_until_some_with_timeout, ModuleHandle,
+    OwnedProcess, Process, ProcessModule,
 };
 
 /// A struct representing a running process.
@@ -133,7 +137,7 @@ impl<'a> Process for BorrowedProcess<'a> {
         let modules = self.module_handles()?;
 
         for module_handle in modules {
-            let module = unsafe { ProcessModule::new_unchecked(module_handle, *self) };
+            let module = unsafe { ProcessModule::new_unchecked(module_handle?, *self) };
             let module_name = module.base_name_os()?;
 
             if module_name.eq_ignore_ascii_case(&target_module_name) {
@@ -162,7 +166,7 @@ impl<'a> Process for BorrowedProcess<'a> {
         let modules = self.module_handles()?;
 
         for module_handle in modules {
-            let module = unsafe { ProcessModule::new_unchecked(module_handle, *self) };
+            let module = unsafe { ProcessModule::new_unchecked(module_handle?, *self) };
             let module_path = module.path()?.into_os_string();
 
             match same_file::Handle::from_path(&module_path) {
@@ -233,80 +237,88 @@ impl<'a> BorrowedProcess<'a> {
     /// # Note
     /// If the process is currently starting up and has not yet loaded all its modules, the returned list may be incomplete.
     /// This can be worked around by repeatedly calling this method.
-    pub fn module_handles(&self) -> Result<impl ExactSizeIterator<Item = ModuleHandle>, io::Error> {
-        let mut module_buf = ArrayOrVecBuf::<ModuleHandle, 1024>::new_uninit_array();
-        const HANDLE_SIZE: u32 = mem::size_of::<HMODULE>() as _;
-        let mut module_buf_byte_size = HANDLE_SIZE * module_buf.capacity() as u32;
-        let mut bytes_needed_new = MaybeUninit::uninit();
-        loop {
-            let result = unsafe {
-                EnumProcessModulesEx(
-                    self.as_raw_handle(),
-                    module_buf.as_mut_ptr(),
-                    module_buf_byte_size,
-                    bytes_needed_new.as_mut_ptr(),
-                    LIST_MODULES_ALL,
-                )
-            };
-            if result == 0 {
-                let err = io::Error::last_os_error();
-                if err.raw_os_error() == Some(ERROR_PARTIAL_COPY as _) && self.is_alive() {
-                    continue;
-                }
-                return Err(err);
-            }
-
-            break;
+    pub fn module_handles(
+        &self,
+    ) -> Result<impl Iterator<Item = io::Result<ModuleHandle>> + '_, io::Error> {
+        struct PebModuleListIterator<'a> {
+            memory: ProcessMemory<'a>,
+            next: NonNull<LIST_ENTRY>,
+            header: NonNull<LIST_ENTRY>,
         }
 
-        let mut bytes_needed = unsafe { bytes_needed_new.assume_init() };
+        impl Iterator for PebModuleListIterator<'_> {
+            type Item = io::Result<ModuleHandle>;
 
-        let modules = if bytes_needed <= module_buf_byte_size {
-            // buffer size was sufficient
-            let module_buf_len = (bytes_needed / HANDLE_SIZE) as usize;
-            unsafe { module_buf.set_len(module_buf_len) };
-            module_buf
-        } else {
-            // buffer size was not sufficient
-            let mut module_buf_vec = Vec::new();
-
-            // we loop here trying to find a buffer size that fits all handles
-            // this needs to be a loop as the returned bytes_needed is only valid for the modules loaded when
-            // the function run, if more modules have loaded in the meantime we need to resize the buffer again.
-            // This can happen often if the process is currently starting up.
-            loop {
-                module_buf_byte_size =
-                    cmp::max(bytes_needed, module_buf_byte_size.saturating_mul(2));
-                let mut module_buf_len = (module_buf_byte_size / HANDLE_SIZE) as usize;
-                if module_buf_len > module_buf_vec.capacity() {
-                    module_buf_vec.reserve(module_buf_len - module_buf_vec.capacity());
+            fn next(&mut self) -> Option<Self::Item> {
+                if self.next == self.header {
+                    return None;
                 }
 
-                let mut bytes_needed_new = MaybeUninit::uninit();
-                let result = unsafe {
-                    EnumProcessModulesEx(
-                        self.as_raw_handle(),
-                        module_buf_vec.as_mut_ptr(),
-                        module_buf_byte_size,
-                        bytes_needed_new.as_mut_ptr(),
-                        LIST_MODULES_ALL,
-                    )
+                let module_ptr = (self.next.as_ptr() as usize
+                    - offset_of!(LDR_DATA_TABLE_ENTRY, InLoadOrderLinks))
+                    as *mut LDR_DATA_TABLE_ENTRY;
+                let module = match unsafe { self.memory.read_struct(module_ptr) } {
+                    Ok(m) => m,
+                    Err(e) => return Some(Err(e)),
                 };
-                if result == 0 {
-                    return Err(io::Error::last_os_error());
-                }
-                bytes_needed = unsafe { bytes_needed_new.assume_init() };
+                let entry = module.InLoadOrderLinks;
+                self.next = NonNull::new(entry.Flink).unwrap();
 
-                if bytes_needed <= module_buf_byte_size {
-                    module_buf_len = (bytes_needed / HANDLE_SIZE) as usize;
-                    unsafe { module_buf_vec.set_len(module_buf_len) };
-                    break ArrayOrVecBuf::from_vec(module_buf_vec);
-                }
+                let handle = module.DllBase.cast();
+                Some(Ok(handle))
             }
+        }
+
+        let memory = self.memory();
+        let mut process_info = MaybeUninit::<PROCESS_BASIC_INFORMATION>::uninit();
+        let mut bytes_written = MaybeUninit::uninit();
+
+        let result = unsafe {
+            NtQueryInformationProcess(
+                self.as_raw_handle(),
+                ProcessBasicInformation,
+                process_info.as_mut_ptr().cast(),
+                mem::size_of::<PROCESS_BASIC_INFORMATION>() as u32,
+                bytes_written.as_mut_ptr(),
+            )
         };
 
-        debug_assert!(modules.iter().all(|module| !module.is_null()));
+        let result = NtStatus::from(result as u32);
+        if result.is_error() {
+            let code = unsafe { RtlNtStatusToDosError(result.to_u32() as i32) };
+            let error = io::Error::from_raw_os_error(code as i32);
+            return Err(error);
+        }
+        let bytes_written = unsafe { bytes_written.assume_init() } as usize;
+        assert_eq!(bytes_written, mem::size_of::<PROCESS_BASIC_INFORMATION>());
 
-        Ok(modules.into_iter())
+        let process_info = unsafe { process_info.assume_init() };
+        let peb = retry_faillable_until_some_with_timeout(
+            || {
+                let peb = unsafe { memory.read_struct(process_info.PebBaseAddress) }?;
+                if peb.Ldr.is_null() {
+                    // this case occurs if called shortly after startup.
+                    return Ok::<_, io::Error>(None);
+                }
+                Ok(Some(peb))
+            },
+            Duration::from_millis(100),
+        )?
+        .unwrap();
+        let ldr = unsafe { memory.read_struct(peb.Ldr) }?;
+
+        let iter = PebModuleListIterator {
+            memory,
+            next: NonNull::new(ldr.InLoadOrderModuleList.Flink)
+                .unwrap()
+                .cast(),
+            header: NonNull::new(
+                (peb.Ldr as usize + offset_of!(PEB_LDR_DATA, InLoadOrderModuleList))
+                    as *mut LIST_ENTRY,
+            )
+            .unwrap(),
+        };
+
+        Ok(iter)
     }
 }

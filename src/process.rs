@@ -3,10 +3,7 @@ use std::{
     io,
     mem::{self, MaybeUninit},
     num::NonZeroU32,
-    os::windows::{
-        prelude::{AsHandle, AsRawHandle, FromRawHandle, OwnedHandle},
-        raw::HANDLE,
-    },
+    os::windows::prelude::{AsHandle, AsRawHandle, FromRawHandle, OwnedHandle},
     path::{Path, PathBuf},
     ptr,
     time::Duration,
@@ -24,26 +21,14 @@ use winapi::{
             GetProcessId, TerminateProcess,
         },
         synchapi::WaitForSingleObject,
-        winbase::{QueryFullProcessImageNameW, INFINITE, WAIT_FAILED},
-        winnt::{
-            IMAGE_FILE_MACHINE_ALPHA, IMAGE_FILE_MACHINE_ALPHA64, IMAGE_FILE_MACHINE_AM33,
-            IMAGE_FILE_MACHINE_AMD64, IMAGE_FILE_MACHINE_ARM, IMAGE_FILE_MACHINE_ARM64,
-            IMAGE_FILE_MACHINE_ARMNT, IMAGE_FILE_MACHINE_CEE, IMAGE_FILE_MACHINE_CEF,
-            IMAGE_FILE_MACHINE_EBC, IMAGE_FILE_MACHINE_I386, IMAGE_FILE_MACHINE_IA64,
-            IMAGE_FILE_MACHINE_M32R, IMAGE_FILE_MACHINE_MIPS16, IMAGE_FILE_MACHINE_MIPSFPU,
-            IMAGE_FILE_MACHINE_MIPSFPU16, IMAGE_FILE_MACHINE_POWERPC, IMAGE_FILE_MACHINE_POWERPCFP,
-            IMAGE_FILE_MACHINE_R10000, IMAGE_FILE_MACHINE_R3000, IMAGE_FILE_MACHINE_R4000,
-            IMAGE_FILE_MACHINE_SH3, IMAGE_FILE_MACHINE_SH3DSP, IMAGE_FILE_MACHINE_SH3E,
-            IMAGE_FILE_MACHINE_SH4, IMAGE_FILE_MACHINE_SH5, IMAGE_FILE_MACHINE_THUMB,
-            IMAGE_FILE_MACHINE_TRICORE, IMAGE_FILE_MACHINE_UNKNOWN, IMAGE_FILE_MACHINE_WCEMIPSV2,
-        },
-        wow64apiset::IsWow64Process2,
+        winbase::{QueryFullProcessImageNameW, INFINITE, WAIT_FAILED}
     },
 };
 
 use crate::{
-    utils::{get_win_ffi_path, FillPathBufResult},
-    BorrowedProcess, ProcessModule,
+    memory::ProcessMemory,
+    utils::{get_win_ffi_path, TryFillBufResult},
+    BorrowedProcess, ProcessModule, raw,
 };
 
 /// A handle to a running process.
@@ -134,7 +119,7 @@ pub trait Process: AsHandle + AsRawHandle {
             return Ok(false);
         }
 
-        process_architecture_info(self.as_raw_handle()).map(|info| info.is_wow64)
+        raw::process_architecture_info(self.as_raw_handle()).map(|info| info.is_wow64)
     }
 
     /// Returns whether this process is a 64-bit process.
@@ -149,11 +134,13 @@ pub trait Process: AsHandle + AsRawHandle {
 
     /// Returns the bitness of this process.
     fn bitness(&self) -> Result<usize, io::Error> {
-        process_architecture_info(self.as_raw_handle()).map(|info| info.process_bitness)
+        raw::process_architecture_info(self.as_raw_handle()).map(|info| info.process_bitness)
     }
 
     /// Returns the executable path of this process.
     fn path(&self) -> Result<PathBuf, io::Error> {
+        // const PROCESS_NAME_NATIVE: u32 = 0x00000001;
+
         get_win_ffi_path(|buf_ptr, buf_size| {
             let mut buf_size = buf_size as u32;
             let result = unsafe {
@@ -162,14 +149,14 @@ pub trait Process: AsHandle + AsRawHandle {
             if result == 0 {
                 let err = io::Error::last_os_error();
                 if err.raw_os_error().unwrap() == ERROR_INSUFFICIENT_BUFFER as i32 {
-                    FillPathBufResult::BufTooSmall {
+                    TryFillBufResult::BufTooSmall {
                         size_hint: Some(buf_size as usize),
                     }
                 } else {
-                    FillPathBufResult::Error(err)
+                    TryFillBufResult::Error(err)
                 }
             } else {
-                FillPathBufResult::Success {
+                TryFillBufResult::Success {
                     actual_len: buf_size as usize,
                 }
             }
@@ -314,106 +301,29 @@ pub trait Process: AsHandle + AsRawHandle {
     where
         Self: Sized,
     {
-        let module_handles = self.borrowed().module_handles()?;
-        let mut modules = Vec::with_capacity(module_handles.len());
-        for module_handle in module_handles {
-            modules.push(unsafe { ProcessModule::new_unchecked(module_handle, self.try_clone()?) });
-        }
-        Ok(modules)
+        let process = self.borrowed();
+        let module_handles = process.module_handles()?;
+        module_handles
+            .map(|module_handle| {
+                Ok(unsafe { ProcessModule::new_unchecked(module_handle?, self.try_clone()?) })
+            })
+            .collect::<Result<Vec<_>, io::Error>>()
     }
-}
 
-struct ArchitectureInfo {
-    process_bitness: usize,
-    _machine_bitness: usize,
-    is_wow64: bool,
-}
+    /// Returns the main module of this process. This is typically the executable.
+    fn main_module(&self) -> Result<ProcessModule<Self>, io::Error>
+    where
+        Self: Sized,
+    {
+        Ok(unsafe { ProcessModule::new_unchecked(ptr::null_mut(), self.try_clone()?) })
+    }
 
-#[inline]
-fn process_architecture_info(handle: HANDLE) -> Result<ArchitectureInfo, io::Error> {
-    fn get_bitness(image_file_machine: u16) -> usize {
-        // taken from https://github.com/fkie-cad/headerParser/blob/bc45fb361ed654e656dd2f66819f33e1c919a3dd/src/ArchitectureInfo.h
-
-        const IMAGE_FILE_MACHINE_DEC_ALPHA_AXP: u16 = 0x183;
-        const IMAGE_FILE_MACHINE_I860: u16 = 0x014d;
-        const IMAGE_FILE_MACHINE_I80586: u16 = 0x014e;
-        const IMAGE_FILE_MACHINE_R3000_BE: u16 = 0x0160;
-        const IMAGE_FILE_MACHINE_RISCV32: u16 = 0x5032;
-        const IMAGE_FILE_MACHINE_RISCV64: u16 = 0x5064;
-        const IMAGE_FILE_MACHINE_RISCV128: u16 = 0x5128;
-
-        match image_file_machine {
-            IMAGE_FILE_MACHINE_ALPHA => 64,
-            IMAGE_FILE_MACHINE_ALPHA64 => 64,
-            IMAGE_FILE_MACHINE_AM33 => 32,
-            IMAGE_FILE_MACHINE_AMD64 => 64,
-            IMAGE_FILE_MACHINE_ARM => 32,
-            IMAGE_FILE_MACHINE_ARM64 => 64,
-            IMAGE_FILE_MACHINE_ARMNT => 32,
-            // IMAGE_FILE_MACHINE_AXP64 => 64,
-            IMAGE_FILE_MACHINE_CEE => 0,
-            IMAGE_FILE_MACHINE_CEF => 0,
-            IMAGE_FILE_MACHINE_DEC_ALPHA_AXP => 64,
-            IMAGE_FILE_MACHINE_EBC => 32,
-            IMAGE_FILE_MACHINE_I386 => 32,
-            IMAGE_FILE_MACHINE_I860 => 32,
-            IMAGE_FILE_MACHINE_I80586 => 32,
-            IMAGE_FILE_MACHINE_IA64 => 64,
-            IMAGE_FILE_MACHINE_M32R => 32,
-            IMAGE_FILE_MACHINE_MIPS16 => 16,
-            IMAGE_FILE_MACHINE_MIPSFPU => 32,
-            IMAGE_FILE_MACHINE_MIPSFPU16 => 16,
-            IMAGE_FILE_MACHINE_POWERPC => 32,
-            IMAGE_FILE_MACHINE_POWERPCFP => 32,
-            IMAGE_FILE_MACHINE_R3000 => 32,
-            IMAGE_FILE_MACHINE_R3000_BE => 32,
-            IMAGE_FILE_MACHINE_R4000 => 64,
-            IMAGE_FILE_MACHINE_R10000 => 64,
-            IMAGE_FILE_MACHINE_RISCV32 => 32,
-            IMAGE_FILE_MACHINE_RISCV64 => 64,
-            IMAGE_FILE_MACHINE_RISCV128 => 128,
-            IMAGE_FILE_MACHINE_SH3 => 32,
-            IMAGE_FILE_MACHINE_SH3DSP => 32,
-            IMAGE_FILE_MACHINE_SH3E => 32,
-            IMAGE_FILE_MACHINE_SH4 => 32,
-            IMAGE_FILE_MACHINE_SH5 => 64,
-            IMAGE_FILE_MACHINE_THUMB => 16,
-            IMAGE_FILE_MACHINE_TRICORE => 32,
-            IMAGE_FILE_MACHINE_WCEMIPSV2 => 32,
-            _ => unimplemented!(
-                "unknown machine architecture (IMAGE_FILE_MACHINE_*): {image_file_machine}"
-            ),
+    #[cfg_attr(feature = "memory", doc(hidden))]
+    #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "memory")))]
+    /// Returns a struct representing the memory region owned by this process.
+    fn memory(&'_ self) -> ProcessMemory<'_> {
+        ProcessMemory {
+            process: self.borrowed(),
         }
     }
-
-    let mut process_machine_info = MaybeUninit::uninit();
-    let mut native_machine_info = MaybeUninit::uninit();
-    let result = unsafe {
-        IsWow64Process2(
-            handle,
-            process_machine_info.as_mut_ptr(),
-            native_machine_info.as_mut_ptr(),
-        )
-    };
-    if result == 0 {
-        return Err(io::Error::last_os_error());
-    }
-
-    let process_machine_info = unsafe { process_machine_info.assume_init() };
-    let native_machine_info = unsafe { native_machine_info.assume_init() };
-
-    let is_wow64 = process_machine_info != IMAGE_FILE_MACHINE_UNKNOWN;
-    let native_bitness = get_bitness(native_machine_info);
-    let (process_bitness, _machine_bitness) = if is_wow64 {
-        let process_bitness = get_bitness(process_machine_info);
-        (process_bitness, native_bitness)
-    } else {
-        (native_bitness, native_bitness)
-    };
-
-    Ok(ArchitectureInfo {
-        process_bitness,
-        _machine_bitness,
-        is_wow64,
-    })
 }

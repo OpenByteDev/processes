@@ -4,7 +4,10 @@ use std::{
     ptr,
 };
 
-use super::{maybe_uninit_slice_assume_init_ref, maybe_uninit_slice_assume_init_mut, maybe_uninit_uninit_array};
+use super::{
+    maybe_uninit_slice_assume_init_mut, maybe_uninit_slice_assume_init_ref,
+    maybe_uninit_uninit_array,
+};
 
 #[derive(Debug)]
 pub(crate) struct ArrayBuf<T, const SIZE: usize> {

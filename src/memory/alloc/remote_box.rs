@@ -1,7 +1,10 @@
 use std::{cell::RefCell, io, marker::PhantomData, mem, ptr::NonNull, rc::Rc, slice};
 
 use crate::{
-    memory::{ProcessMemorySlice, alloc::{Allocation, DynamicMultiBufferAllocator, RawAllocator}},
+    memory::{
+        alloc::{Allocation, DynamicMultiBufferAllocator, RawAllocator},
+        ProcessMemorySlice,
+    },
     BorrowedProcess, OwnedProcess, Process,
 };
 
@@ -98,11 +101,11 @@ impl RemoteAllocation {
     }
 
     pub fn write_bytes(&self, value: &[u8]) -> Result<(), io::Error> {
-        self.memory().write(0, value)
+        self.memory().write(value)
     }
 
     pub fn read_bytes(&self, buf: &mut [u8]) -> Result<(), io::Error> {
-        self.memory().read(0, buf)
+        self.memory().read(buf)
     }
 
     #[must_use]
@@ -165,13 +168,13 @@ impl<T: ?Sized> RemoteBox<T> {
 
 impl<T: ?Sized + Copy> RemoteBox<T> {
     pub fn write(&self, value: &T) -> Result<(), io::Error> {
-        self.allocation.memory().write_struct(0, value)
+        self.allocation.memory().write_struct(value)
     }
 }
 
 impl<T: Sized + Copy> RemoteBox<T> {
     pub fn read(&self) -> Result<T, io::Error> {
-        unsafe { self.allocation.memory().read_struct(0) }
+        unsafe { self.allocation.memory().read_struct() }
     }
 
     #[must_use]

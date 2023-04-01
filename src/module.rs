@@ -9,7 +9,7 @@ use std::{
 use crate::{
     error::{GetLocalProcedureAddressError, IoOrNulError},
     function::RawFunctionPtr,
-    utils::{get_win_ffi_path, get_win_ffi_string, FillPathBufResult},
+    utils::{get_win_ffi_path, get_win_ffi_string, TryFillBufResult},
     BorrowedProcess, OwnedProcess, Process,
 };
 use path_absolutize::Absolutize;
@@ -57,6 +57,7 @@ impl<P: Process> ProcessModule<P> {
     /// The caller must guarantee that the given handle is valid and that the module is loaded into the given process.
     /// (and stays that way while using the returned instance).
     pub unsafe fn new_unchecked(handle: ModuleHandle, process: P) -> Self {
+        debug_assert!(!handle.is_null());
         let handle = unsafe { NonNull::new_unchecked(handle) };
         Self { handle, process }
     }
@@ -158,7 +159,7 @@ impl<P: Process> ProcessModule<P> {
         let handle = unsafe { GetModuleHandleW(module.as_ptr()) };
         if handle.is_null() {
             let err = io::Error::last_os_error();
-            if err.raw_os_error().unwrap() == ERROR_MOD_NOT_FOUND as _ {
+            if err.raw_os_error().unwrap() == ERROR_MOD_NOT_FOUND as i32 {
                 return Ok(None);
             }
 
@@ -222,14 +223,14 @@ impl<P: Process> ProcessModule<P> {
                 if result == 0 {
                     let err = io::Error::last_os_error();
                     if err.raw_os_error().unwrap() == ERROR_INSUFFICIENT_BUFFER as i32 {
-                        FillPathBufResult::BufTooSmall { size_hint: None }
+                        TryFillBufResult::BufTooSmall { size_hint: None }
                     } else {
-                        FillPathBufResult::Error(err)
+                        TryFillBufResult::Error(err)
                     }
                 } else if result >= buf_size {
-                    FillPathBufResult::BufTooSmall { size_hint: None }
+                    TryFillBufResult::BufTooSmall { size_hint: None }
                 } else {
-                    FillPathBufResult::Success {
+                    TryFillBufResult::Success {
                         actual_len: result as usize,
                     }
                 }
@@ -248,14 +249,14 @@ impl<P: Process> ProcessModule<P> {
                 if result == 0 {
                     let err = io::Error::last_os_error();
                     if err.raw_os_error().unwrap() == ERROR_INSUFFICIENT_BUFFER as i32 {
-                        FillPathBufResult::BufTooSmall { size_hint: None }
+                        TryFillBufResult::BufTooSmall { size_hint: None }
                     } else {
-                        FillPathBufResult::Error(err)
+                        TryFillBufResult::Error(err)
                     }
                 } else if result >= buf_size {
-                    FillPathBufResult::BufTooSmall { size_hint: None }
+                    TryFillBufResult::BufTooSmall { size_hint: None }
                 } else {
-                    FillPathBufResult::Success {
+                    TryFillBufResult::Success {
                         actual_len: result as usize,
                     }
                 }
@@ -298,14 +299,14 @@ impl<P: Process> ProcessModule<P> {
                     if result == 0 {
                         let err = io::Error::last_os_error();
                         if err.raw_os_error().unwrap() == ERROR_INSUFFICIENT_BUFFER as i32 {
-                            FillPathBufResult::BufTooSmall { size_hint: None }
+                            TryFillBufResult::BufTooSmall { size_hint: None }
                         } else {
-                            FillPathBufResult::Error(err)
+                            TryFillBufResult::Error(err)
                         }
                     } else if result >= buf_size {
-                        FillPathBufResult::BufTooSmall { size_hint: None }
+                        TryFillBufResult::BufTooSmall { size_hint: None }
                     } else {
-                        FillPathBufResult::Success {
+                        TryFillBufResult::Success {
                             actual_len: result as usize,
                         }
                     }

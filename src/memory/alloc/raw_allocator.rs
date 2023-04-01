@@ -1,6 +1,9 @@
 use std::{collections::LinkedList, io, mem, ptr::NonNull};
 
-use crate::{memory::ProcessMemoryBuffer, BorrowedProcess, Process};
+use crate::{
+    memory::{os_page_size, ProcessMemoryBuffer},
+    BorrowedProcess, Process,
+};
 
 pub trait RawAllocator {
     type Error;
@@ -31,7 +34,7 @@ impl<'a> DynamicMultiBufferAllocator<'a> {
     }
 
     fn alloc_page(&mut self, min_size: usize) -> Result<&mut FixedBufferAllocator<'a>, io::Error> {
-        let os_page_size = ProcessMemoryBuffer::os_page_size();
+        let os_page_size = os_page_size();
         let page_size = (min_size / os_page_size + 1) * os_page_size;
         let mem = ProcessMemoryBuffer::allocate(self.process, page_size)?;
         let page = FixedBufferAllocator::new(mem);
@@ -238,7 +241,7 @@ pub enum AllocError {
 mod tests {
     use std::mem;
 
-    use crate::memory::ProcessMemorySlice;
+    use crate::memory::{os_page_size, ProcessMemorySlice};
 
     use super::*;
 
@@ -252,7 +255,7 @@ mod tests {
         assert!(alloc.len >= data.len());
         let alloc_mem =
             unsafe { ProcessMemorySlice::from_raw_parts(alloc.as_raw_ptr(), alloc.len, process) };
-        alloc_mem.write(0, &data).unwrap();
+        alloc_mem.write(&data).unwrap();
 
         assert_eq!(allocator.count_allocated_bytes(), alloc.len);
         assert!(allocator.count_allocated_bytes() >= data.len());
@@ -272,7 +275,7 @@ mod tests {
             let alloc_mem = unsafe {
                 ProcessMemorySlice::from_raw_parts(alloc.as_raw_ptr(), alloc.len, process)
             };
-            alloc_mem.write(0, &data[0..i]).unwrap();
+            alloc_mem.write(&data[0..i]).unwrap();
 
             allocated_bytes += i;
             actual_allocated_bytes += alloc.len;
@@ -340,7 +343,7 @@ mod tests {
         let process = BorrowedProcess::current();
         let mut allocator = DynamicMultiBufferAllocator::new(process);
 
-        let page_size = ProcessMemoryBuffer::os_page_size();
+        let page_size = os_page_size();
         let alloc = allocator.alloc(page_size - 1).unwrap();
         assert!(alloc.len >= page_size - 1);
         let alloc = allocator.alloc(page_size - 1).unwrap();
@@ -373,7 +376,7 @@ mod tests {
         let process = BorrowedProcess::current();
         let mut allocator = DynamicMultiBufferAllocator::new(process);
 
-        let page_size = ProcessMemoryBuffer::os_page_size();
+        let page_size = os_page_size();
         let alloc = allocator.alloc(page_size + 1).unwrap();
         assert!(alloc.len > page_size);
     }
