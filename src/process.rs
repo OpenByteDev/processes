@@ -26,6 +26,7 @@ use winapi::{
 };
 
 use crate::{
+    error::ProcessError,
     memory::ProcessMemory,
     raw,
     utils::{get_win_ffi_path, TryFillBufResult},
@@ -52,7 +53,7 @@ pub trait Process: AsHandle + AsRawHandle {
     fn borrowed(&self) -> BorrowedProcess<'_>;
 
     /// Tries to clone this process into a new instance.
-    fn try_clone(&self) -> Result<Self, io::Error>
+    fn try_clone(&self) -> Result<Self, ProcessError>
     where
         Self: Sized;
 
@@ -108,14 +109,16 @@ pub trait Process: AsHandle + AsRawHandle {
     }
 
     /// Returns the id of this process.
-    fn pid(&self) -> Result<NonZeroU32, io::Error> {
+    fn pid(&self) -> Result<NonZeroU32, ProcessError> {
         let result = unsafe { GetProcessId(self.as_raw_handle()) };
-        NonZeroU32::new(result).ok_or_else(io::Error::last_os_error)
+        NonZeroU32::new(result)
+            .ok_or_else(io::Error::last_os_error)
+            .map_err(|e| e.into())
     }
 
     /// Returns whether this process is running under [WOW64](https://docs.microsoft.com/en-us/windows/win32/winprog64/running-32-bit-applications).
     /// This is the case for 32-bit programs running on a 64-bit platform.
-    fn runs_under_wow64(&self) -> Result<bool, io::Error> {
+    fn runs_under_wow64(&self) -> Result<bool, ProcessError> {
         if cfg!(target_pointer_width = "64") {
             return Ok(false);
         }
@@ -124,22 +127,22 @@ pub trait Process: AsHandle + AsRawHandle {
     }
 
     /// Returns whether this process is a 64-bit process.
-    fn is_64_bit(&self) -> Result<bool, io::Error> {
+    fn is_64_bit(&self) -> Result<bool, ProcessError> {
         self.bitness().map(|bits| bits == 64)
     }
 
     /// Returns whether this process is a 32-bit process.
-    fn is_32_bit(&self) -> Result<bool, io::Error> {
+    fn is_32_bit(&self) -> Result<bool, ProcessError> {
         self.bitness().map(|bits| bits == 32)
     }
 
     /// Returns the bitness of this process.
-    fn bitness(&self) -> Result<usize, io::Error> {
+    fn bitness(&self) -> Result<usize, ProcessError> {
         raw::process_architecture_info(self.as_raw_handle()).map(|info| info.process_bitness)
     }
 
     /// Returns the executable path of this process.
-    fn path(&self) -> Result<PathBuf, io::Error> {
+    fn path(&self) -> Result<PathBuf, ProcessError> {
         // const PROCESS_NAME_NATIVE: u32 = 0x00000001;
 
         get_win_ffi_path(|buf_ptr, buf_size| {
@@ -154,7 +157,7 @@ pub trait Process: AsHandle + AsRawHandle {
                         size_hint: Some(buf_size as usize),
                     }
                 } else {
-                    TryFillBufResult::Error(err)
+                    TryFillBufResult::Error(err.into())
                 }
             } else {
                 TryFillBufResult::Success {
@@ -165,27 +168,27 @@ pub trait Process: AsHandle + AsRawHandle {
     }
 
     /// Returns the file name of the executable of this process.
-    fn base_name(&self) -> Result<String, io::Error> {
+    fn base_name(&self) -> Result<String, ProcessError> {
         self.path()
             .map(|path| path.file_name().unwrap().to_string_lossy().to_string())
     }
 
     /// Returns the file name of the executable of this process as an [OsString].
-    fn base_name_os(&self) -> Result<OsString, io::Error> {
+    fn base_name_os(&self) -> Result<OsString, ProcessError> {
         self.path()
             .map(|path| path.file_name().unwrap().to_os_string())
     }
 
     /// Terminates this process with exit code 1.
-    fn kill(&self) -> Result<(), io::Error> {
+    fn kill(&self) -> Result<(), ProcessError> {
         self.kill_with_exit_code(1)
     }
 
     /// Terminates this process with the given exit code.
-    fn kill_with_exit_code(&self, exit_code: u32) -> Result<(), io::Error> {
+    fn kill_with_exit_code(&self, exit_code: u32) -> Result<(), ProcessError> {
         let result = unsafe { TerminateProcess(self.as_raw_handle(), exit_code) };
         if result == 0 {
-            return Err(io::Error::last_os_error());
+            return Err(io::Error::last_os_error().into());
         }
         Ok(())
     }
@@ -195,19 +198,19 @@ pub trait Process: AsHandle + AsRawHandle {
         &self,
         remote_fn: extern "system" fn(*mut T) -> u32,
         parameter: *mut T,
-    ) -> Result<u32, io::Error> {
+    ) -> Result<u32, ProcessError> {
         let thread_handle = self.start_remote_thread(remote_fn, parameter)?;
 
         let reason = unsafe { WaitForSingleObject(thread_handle.as_raw_handle(), INFINITE) };
         if reason == WAIT_FAILED {
-            return Err(io::Error::last_os_error());
+            return Err(io::Error::last_os_error().into());
         }
 
         let mut exit_code = MaybeUninit::uninit();
         let result =
             unsafe { GetExitCodeThread(thread_handle.as_raw_handle(), exit_code.as_mut_ptr()) };
         if result == 0 {
-            return Err(io::Error::last_os_error());
+            return Err(io::Error::last_os_error().into());
         }
         debug_assert_ne!(
             result as u32, STILL_ACTIVE,
@@ -222,7 +225,7 @@ pub trait Process: AsHandle + AsRawHandle {
         &self,
         remote_fn: unsafe extern "system" fn(*mut T) -> u32,
         parameter: *mut T,
-    ) -> Result<OwnedHandle, io::Error> {
+    ) -> Result<OwnedHandle, ProcessError> {
         const RUN_IMMEDIATELY: DWORD = 0;
 
         // create a remote thread that will call LoadLibraryW with payload_path as its argument.
@@ -238,7 +241,7 @@ pub trait Process: AsHandle + AsRawHandle {
             )
         };
         if thread_handle.is_null() {
-            return Err(io::Error::last_os_error());
+            return Err(io::Error::last_os_error().into());
         }
 
         Ok(unsafe { OwnedHandle::from_raw_handle(thread_handle) })
@@ -254,7 +257,7 @@ pub trait Process: AsHandle + AsRawHandle {
     fn find_module_by_name(
         &self,
         module_name: impl AsRef<Path>,
-    ) -> Result<Option<ProcessModule<Self>>, io::Error>
+    ) -> Result<Option<ProcessModule<Self>>, ProcessError>
     where
         Self: Sized;
 
@@ -268,7 +271,7 @@ pub trait Process: AsHandle + AsRawHandle {
     fn find_module_by_path(
         &self,
         module_path: impl AsRef<Path>,
-    ) -> Result<Option<ProcessModule<Self>>, io::Error>
+    ) -> Result<Option<ProcessModule<Self>>, ProcessError>
     where
         Self: Sized;
 
@@ -279,7 +282,7 @@ pub trait Process: AsHandle + AsRawHandle {
         &self,
         module_name: impl AsRef<Path>,
         timeout: Duration,
-    ) -> Result<Option<ProcessModule<Self>>, io::Error>
+    ) -> Result<Option<ProcessModule<Self>>, ProcessError>
     where
         Self: Sized;
 
@@ -290,7 +293,7 @@ pub trait Process: AsHandle + AsRawHandle {
         &self,
         module_path: impl AsRef<Path>,
         timeout: Duration,
-    ) -> Result<Option<ProcessModule<Self>>, io::Error>
+    ) -> Result<Option<ProcessModule<Self>>, ProcessError>
     where
         Self: Sized;
 
@@ -298,7 +301,7 @@ pub trait Process: AsHandle + AsRawHandle {
     ///
     /// # Note
     /// If the process is currently starting up and has not loaded all its modules yet, the returned list may be incomplete.
-    fn modules(&self) -> Result<Vec<ProcessModule<Self>>, io::Error>
+    fn modules(&self) -> Result<Vec<ProcessModule<Self>>, ProcessError>
     where
         Self: Sized,
     {
@@ -308,11 +311,11 @@ pub trait Process: AsHandle + AsRawHandle {
             .map(|module_handle| {
                 Ok(unsafe { ProcessModule::new_unchecked(module_handle?, self.try_clone()?) })
             })
-            .collect::<Result<Vec<_>, io::Error>>()
+            .collect::<Result<Vec<_>, ProcessError>>()
     }
 
     /// Returns the main module of this process. This is typically the executable.
-    fn main_module(&self) -> Result<ProcessModule<Self>, io::Error>
+    fn main_module(&self) -> Result<ProcessModule<Self>, ProcessError>
     where
         Self: Sized,
     {

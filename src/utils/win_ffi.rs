@@ -1,26 +1,26 @@
-use std::{cmp, io, mem::MaybeUninit, path::PathBuf};
+use std::{cmp, mem::MaybeUninit, path::PathBuf};
 
 use widestring::U16Str;
 use winapi::shared::minwindef::MAX_PATH;
 
 use super::{maybe_uninit_slice_assume_init_mut, ArrayBuf};
 
-pub enum TryFillBufResult {
+pub enum TryFillBufResult<E> {
     BufTooSmall { size_hint: Option<usize> },
     Success { actual_len: usize },
-    Error(io::Error),
+    Error(E),
 }
 
-pub fn get_win_ffi_path(
-    f: impl FnMut(*mut u16, usize) -> TryFillBufResult,
-) -> Result<PathBuf, io::Error> {
-    get_win_ffi_string::<MAX_PATH, PathBuf>(f, |s| s.to_os_string().into())
+pub fn get_win_ffi_path<E>(
+    f: impl FnMut(*mut u16, usize) -> TryFillBufResult<E>,
+) -> Result<PathBuf, E> {
+    get_win_ffi_string::<MAX_PATH, PathBuf, E>(f, |s| s.to_os_string().into())
 }
 
-pub fn get_win_ffi_string<const BUF_SIZE: usize, S>(
-    mut try_fill: impl FnMut(*mut u16, usize) -> TryFillBufResult,
+pub fn get_win_ffi_string<const BUF_SIZE: usize, S, E>(
+    mut try_fill: impl FnMut(*mut u16, usize) -> TryFillBufResult<E>,
     copy: impl FnOnce(&mut U16Str) -> S,
-) -> Result<S, io::Error> {
+) -> Result<S, E> {
     let mut buf = ArrayBuf::<u16, BUF_SIZE>::new_uninit();
     match try_fill(buf.as_mut_ptr(), buf.capacity()) {
         TryFillBufResult::BufTooSmall { mut size_hint } => {

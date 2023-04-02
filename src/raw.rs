@@ -22,8 +22,10 @@ use winapi::{
     },
 };
 
+use crate::error::ProcessError;
+
 /// Returns a list of all currently running processes.
-pub fn iter_process_ids() -> Result<impl Iterator<Item = u32>, io::Error> {
+pub fn iter_process_ids() -> Result<impl Iterator<Item = u32>, ProcessError> {
     const IDLE_PROCESS_ID: u32 = 0;
     const SYSTEM_PROCESS_ID: u32 = 4;
 
@@ -33,7 +35,8 @@ pub fn iter_process_ids() -> Result<impl Iterator<Item = u32>, io::Error> {
     Ok(iter)
 }
 
-pub fn iter_process_info() -> Result<impl Iterator<Item = SYSTEM_PROCESS_INFORMATION>, io::Error> {
+pub fn iter_process_info() -> Result<impl Iterator<Item = SYSTEM_PROCESS_INFORMATION>, ProcessError>
+{
     struct SystemProcessInfoIterator {
         buf: Vec<u8>,
         next_offset: Option<usize>,
@@ -95,7 +98,7 @@ pub struct ArchitectureInfo {
     pub is_wow64: bool,
 }
 
-pub fn process_architecture_info(handle: HANDLE) -> Result<ArchitectureInfo, io::Error> {
+pub fn process_architecture_info(handle: HANDLE) -> Result<ArchitectureInfo, ProcessError> {
     fn get_bitness(image_file_machine: u16) -> usize {
         // taken from https://github.com/fkie-cad/headerParser/blob/bc45fb361ed654e656dd2f66819f33e1c919a3dd/src/ArchitectureInfo.h
 
@@ -161,7 +164,7 @@ pub fn process_architecture_info(handle: HANDLE) -> Result<ArchitectureInfo, io:
         )
     };
     if result == 0 {
-        return Err(io::Error::last_os_error());
+        return Err(io::Error::last_os_error().into());
     }
 
     let process_machine_info = unsafe { process_machine_info.assume_init() };

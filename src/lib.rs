@@ -28,8 +28,6 @@
 #![cfg_attr(not(feature = "doc-cfg"), allow(missing_docs))]
 #![cfg_attr(feature = "doc-cfg", feature(doc_cfg))]
 
-use std::io;
-
 mod process;
 pub use process::*;
 
@@ -42,15 +40,15 @@ pub use borrowed::*;
 mod module;
 pub use module::*;
 
+mod error;
+pub use error::*;
+
 pub(crate) mod raw;
 
 /// Module containing utilities for dealing with memory of another process.
 #[cfg(feature = "memory")]
 #[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "memory")))]
 pub mod memory;
-
-/// Module containing error types for this crate.
-pub mod error;
 
 /// Module containing function pointer related types.
 pub mod function;
@@ -64,23 +62,23 @@ pub fn current() -> BorrowedProcess<'static> {
 }
 
 /// Returns a list of all currently running processes.
-pub fn all() -> Result<impl Iterator<Item = OwnedProcess>, io::Error> {
+pub fn all() -> Result<impl Iterator<Item = OwnedProcess>, ProcessError> {
     OwnedProcess::all()
 }
 
 /// Finds the process with the given pid.
-pub fn from_pid(pid: u32) -> Result<OwnedProcess, io::Error> {
+pub fn from_pid(pid: u32) -> Result<OwnedProcess, ProcessError> {
     OwnedProcess::from_pid(pid)
 }
 
 /// Finds all processes whose name contains the given string.
 pub fn find_all_by_name(
     name: impl AsRef<str>,
-) -> Result<impl Iterator<Item = OwnedProcess>, io::Error> {
+) -> Result<impl Iterator<Item = OwnedProcess>, ProcessError> {
     OwnedProcess::find_all_by_name(name)
 }
 
 /// Finds the first process whose name contains the given string.
-pub fn find_first_by_name(name: impl AsRef<str>) -> Result<Option<OwnedProcess>, io::Error> {
+pub fn find_first_by_name(name: impl AsRef<str>) -> Result<Option<OwnedProcess>, ProcessError> {
     OwnedProcess::find_first_by_name(name)
 }

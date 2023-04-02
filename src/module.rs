@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::{
-    error::{GetLocalProcedureAddressError, IoOrNulError},
+    error::{GetLocalProcedureAddressError, ProcessError},
     function::RawFunctionPtr,
     utils::{get_win_ffi_path, get_win_ffi_string, TryFillBufResult},
     BorrowedProcess, OwnedProcess, Process,
@@ -84,7 +84,7 @@ impl<P: Process> ProcessModule<P> {
     pub fn find(
         module_name_or_path: impl AsRef<Path>,
         process: P,
-    ) -> Result<Option<ProcessModule<P>>, IoOrNulError> {
+    ) -> Result<Option<ProcessModule<P>>, ProcessError> {
         let module_name_or_path = module_name_or_path.as_ref();
         if module_name_or_path.parent().is_some() {
             Self::find_by_path(module_name_or_path, process)
@@ -98,7 +98,7 @@ impl<P: Process> ProcessModule<P> {
     pub fn find_by_name(
         module_name: impl AsRef<Path>,
         process: P,
-    ) -> Result<Option<ProcessModule<P>>, IoOrNulError> {
+    ) -> Result<Option<ProcessModule<P>>, ProcessError> {
         if process.is_current() {
             Self::find_local_by_name(module_name)
         } else {
@@ -111,7 +111,7 @@ impl<P: Process> ProcessModule<P> {
     pub fn find_by_path(
         module_path: impl AsRef<Path>,
         process: P,
-    ) -> Result<Option<ProcessModule<P>>, IoOrNulError> {
+    ) -> Result<Option<ProcessModule<P>>, ProcessError> {
         if process.is_current() {
             Self::find_local_by_path(module_path)
         } else {
@@ -123,7 +123,7 @@ impl<P: Process> ProcessModule<P> {
     /// If the extension is omitted, the default library extension `.dll` is appended.
     pub fn find_local(
         module_name_or_path: impl AsRef<Path>,
-    ) -> Result<Option<ProcessModule<P>>, IoOrNulError> {
+    ) -> Result<Option<ProcessModule<P>>, ProcessError> {
         Self::find(module_name_or_path, P::current())
     }
 
@@ -131,7 +131,7 @@ impl<P: Process> ProcessModule<P> {
     /// If the extension is omitted, the default library extension `.dll` is appended.
     pub fn find_local_by_name(
         module_name: impl AsRef<Path>,
-    ) -> Result<Option<ProcessModule<P>>, IoOrNulError> {
+    ) -> Result<Option<ProcessModule<P>>, ProcessError> {
         Self::find_local_by_name_or_abs_path(module_name.as_ref())
     }
 
@@ -139,7 +139,7 @@ impl<P: Process> ProcessModule<P> {
     /// If the extension is omitted, the default library extension `.dll` is appended.
     pub fn find_local_by_path(
         module_path: impl AsRef<Path>,
-    ) -> Result<Option<ProcessModule<P>>, IoOrNulError> {
+    ) -> Result<Option<ProcessModule<P>>, ProcessError> {
         let absolute_path = module_path.as_ref().absolutize()?;
         Self::find_local_by_name_or_abs_path(absolute_path.as_ref())
     }
@@ -147,7 +147,7 @@ impl<P: Process> ProcessModule<P> {
     #[doc(hidden)]
     pub fn find_local_by_name_or_abs_path(
         module: &Path,
-    ) -> Result<Option<ProcessModule<P>>, IoOrNulError> {
+    ) -> Result<Option<ProcessModule<P>>, ProcessError> {
         let module = U16CString::from_os_str(module.as_os_str())?;
         Self::find_local_by_name_or_abs_path_wstr(&module).map_err(|e| e.into())
     }
@@ -155,7 +155,7 @@ impl<P: Process> ProcessModule<P> {
     #[doc(hidden)]
     pub fn find_local_by_name_or_abs_path_wstr(
         module: &U16CStr,
-    ) -> Result<Option<ProcessModule<P>>, io::Error> {
+    ) -> Result<Option<ProcessModule<P>>, ProcessError> {
         let handle = unsafe { GetModuleHandleW(module.as_ptr()) };
         if handle.is_null() {
             let err = io::Error::last_os_error();
@@ -163,7 +163,7 @@ impl<P: Process> ProcessModule<P> {
                 return Ok(None);
             }
 
-            return Err(err);
+            return Err(err.into());
         }
 
         Ok(Some(unsafe { Self::new_local_unchecked(handle) }))
@@ -172,23 +172,19 @@ impl<P: Process> ProcessModule<P> {
     fn _find_remote_by_name(
         module_name: impl AsRef<Path>,
         process: P,
-    ) -> Result<Option<ProcessModule<P>>, IoOrNulError> {
+    ) -> Result<Option<ProcessModule<P>>, ProcessError> {
         assert!(!process.is_current());
 
-        process
-            .find_module_by_name(module_name)
-            .map_err(|e| e.into())
+        process.find_module_by_name(module_name)
     }
 
     fn _find_remote_by_path(
         module_path: impl AsRef<Path>,
         process: P,
-    ) -> Result<Option<ProcessModule<P>>, IoOrNulError> {
+    ) -> Result<Option<ProcessModule<P>>, ProcessError> {
         assert!(!process.is_current());
 
-        process
-            .find_module_by_path(module_path)
-            .map_err(|e| e.into())
+        process.find_module_by_path(module_path)
     }
 
     /// Returns the underlying handle og the module.
@@ -215,7 +211,7 @@ impl<P: Process> ProcessModule<P> {
     }
 
     /// Returns the path that the module was loaded from.
-    pub fn path(&self) -> Result<PathBuf, io::Error> {
+    pub fn path(&self) -> Result<PathBuf, ProcessError> {
         if self.is_local() {
             get_win_ffi_path(|buf_ptr, buf_size| {
                 let buf_size = buf_size as u32;
@@ -225,7 +221,7 @@ impl<P: Process> ProcessModule<P> {
                     if err.raw_os_error().unwrap() == ERROR_INSUFFICIENT_BUFFER as i32 {
                         TryFillBufResult::BufTooSmall { size_hint: None }
                     } else {
-                        TryFillBufResult::Error(err)
+                        TryFillBufResult::Error(err.into())
                     }
                 } else if result >= buf_size {
                     TryFillBufResult::BufTooSmall { size_hint: None }
@@ -251,7 +247,7 @@ impl<P: Process> ProcessModule<P> {
                     if err.raw_os_error().unwrap() == ERROR_INSUFFICIENT_BUFFER as i32 {
                         TryFillBufResult::BufTooSmall { size_hint: None }
                     } else {
-                        TryFillBufResult::Error(err)
+                        TryFillBufResult::Error(err.into())
                     }
                 } else if result >= buf_size {
                     TryFillBufResult::BufTooSmall { size_hint: None }
@@ -265,7 +261,7 @@ impl<P: Process> ProcessModule<P> {
     }
 
     /// Returns the base name of the file the module was loaded from.
-    pub fn base_name(&self) -> Result<String, io::Error> {
+    pub fn base_name(&self) -> Result<String, ProcessError> {
         self._base_name(
             |path| path.to_string_lossy().to_string(),
             |buf| buf.to_string_lossy(),
@@ -273,7 +269,7 @@ impl<P: Process> ProcessModule<P> {
     }
 
     /// Returns the base name of the file the module was loaded from as an [OsString].
-    pub fn base_name_os(&self) -> Result<OsString, io::Error> {
+    pub fn base_name_os(&self) -> Result<OsString, ProcessError> {
         self._base_name(|path| path.to_os_string(), |buf| buf.to_os_string())
     }
 
@@ -281,11 +277,11 @@ impl<P: Process> ProcessModule<P> {
         &self,
         map_local: impl FnOnce(&OsStr) -> S,
         map_remote: impl FnOnce(&U16Str) -> S,
-    ) -> Result<S, io::Error> {
+    ) -> Result<S, ProcessError> {
         if self.is_local() {
             self.path().map(|path| map_local(path.file_name().unwrap()))
         } else {
-            get_win_ffi_string::<MAX_PATH, S>(
+            get_win_ffi_string::<MAX_PATH, S, ProcessError>(
                 |buf_ptr, buf_size| {
                     let buf_size = buf_size as u32;
                     let result = unsafe {
@@ -301,7 +297,7 @@ impl<P: Process> ProcessModule<P> {
                         if err.raw_os_error().unwrap() == ERROR_INSUFFICIENT_BUFFER as i32 {
                             TryFillBufResult::BufTooSmall { size_hint: None }
                         } else {
-                            TryFillBufResult::Error(err)
+                            TryFillBufResult::Error(err.into())
                         }
                     } else if result >= buf_size {
                         TryFillBufResult::BufTooSmall { size_hint: None }
@@ -329,8 +325,7 @@ impl<P: Process> ProcessModule<P> {
         }
 
         let proc_name = CString::new(proc_name.as_ref())?;
-        self.get_local_procedure_address_cstr(&proc_name)
-            .map_err(|e| e.into())
+        Ok(self.get_local_procedure_address_cstr(&proc_name)?)
     }
 
     /*
@@ -354,14 +349,14 @@ impl<P: Process> ProcessModule<P> {
     pub fn get_local_procedure_address_cstr(
         &self,
         proc_name: &CStr,
-    ) -> Result<RawFunctionPtr, io::Error> {
+    ) -> Result<RawFunctionPtr, ProcessError> {
         assert!(self.is_local());
 
         let fn_ptr = unsafe { GetProcAddress(self.handle(), proc_name.as_ptr()) };
         if let Some(fn_ptr) = NonNull::new(fn_ptr) {
             Ok(fn_ptr.as_ptr())
         } else {
-            Err(io::Error::last_os_error())
+            Err(io::Error::last_os_error().into())
         }
     }
 
@@ -372,7 +367,7 @@ impl<P: Process> ProcessModule<P> {
     }
 
     /// Returns whether this module is still loaded in the respective process.
-    pub fn try_guess_is_loaded(&self) -> Result<bool, io::Error> {
+    pub fn try_guess_is_loaded(&self) -> Result<bool, ProcessError> {
         if !self.process().is_alive() {
             return Ok(false);
         }
@@ -389,7 +384,7 @@ impl<P: Process> ProcessModule<P> {
         };
 
         if result == 0 {
-            Err(io::Error::last_os_error())
+            Err(io::Error::last_os_error().into())
         } else {
             let module_info = unsafe { module_info.assume_init() };
             Ok(module_info.BaseAddress == raw_module && module_info.Protect != PAGE_NOACCESS)
@@ -399,7 +394,7 @@ impl<P: Process> ProcessModule<P> {
 
 impl BorrowedProcessModule<'_> {
     /// Tries to create a new [`OwnedProcessModule`] instance for this process module.
-    pub fn try_to_owned(&self) -> Result<OwnedProcessModule, io::Error> {
+    pub fn try_to_owned(&self) -> Result<OwnedProcessModule, ProcessError> {
         self.process
             .try_to_owned()
             .map(|process| OwnedProcessModule {
@@ -410,7 +405,7 @@ impl BorrowedProcessModule<'_> {
 }
 
 impl TryFrom<BorrowedProcessModule<'_>> for OwnedProcessModule {
-    type Error = io::Error;
+    type Error = ProcessError;
 
     fn try_from(module: BorrowedProcessModule<'_>) -> Result<Self, Self::Error> {
         module.try_to_owned()

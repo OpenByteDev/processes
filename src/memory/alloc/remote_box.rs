@@ -33,29 +33,29 @@ impl RemoteBoxAllocator {
         self.0.process.borrowed()
     }
 
-    pub fn alloc_raw(&self, size: usize) -> Result<RemoteAllocation, io::Error> {
+    pub fn alloc_raw(&self, size: usize) -> Result<RemoteAllocation, ProcessError> {
         // TODO: optimize empty allocations
         let allocation = self.0.allocator.borrow_mut().alloc(size)?;
         Ok(RemoteAllocation::new(self.clone(), allocation))
     }
-    pub fn alloc_uninit<T: Copy>(&self) -> Result<RemoteBox<T>, io::Error> {
+    pub fn alloc_uninit<T: Copy>(&self) -> Result<RemoteBox<T>, ProcessError> {
         let allocation = self.alloc_raw(mem::size_of::<T>())?;
         Ok(unsafe { RemoteBox::new(allocation) })
     }
-    pub fn alloc_uninit_for<T: Copy>(&self, value: &T) -> Result<RemoteBox<T>, io::Error> {
+    pub fn alloc_uninit_for<T: Copy>(&self, value: &T) -> Result<RemoteBox<T>, ProcessError> {
         let allocation = self.alloc_raw(mem::size_of_val(value))?;
         Ok(unsafe { RemoteBox::new(allocation) })
     }
-    pub fn alloc_and_copy<T: Copy>(&self, value: &T) -> Result<RemoteBox<T>, io::Error> {
+    pub fn alloc_and_copy<T: Copy>(&self, value: &T) -> Result<RemoteBox<T>, ProcessError> {
         let b = self.alloc_uninit_for(value)?;
         b.write(value)?;
         Ok(b)
     }
-    pub fn alloc_buf<T: Copy>(&self, len: usize) -> Result<RemoteAllocation, io::Error> {
+    pub fn alloc_buf<T: Copy>(&self, len: usize) -> Result<RemoteAllocation, ProcessError> {
         let allocation = self.alloc_raw(len * mem::size_of::<T>())?;
         Ok(allocation)
     }
-    pub fn alloc_and_copy_buf<T: Copy>(&self, buf: &[T]) -> Result<RemoteAllocation, io::Error> {
+    pub fn alloc_and_copy_buf<T: Copy>(&self, buf: &[T]) -> Result<RemoteAllocation, ProcessError> {
         let bytes = unsafe {
             slice::from_raw_parts(buf.as_ptr() as *const u8, buf.len() * mem::size_of::<T>())
         };
@@ -100,11 +100,11 @@ impl RemoteAllocation {
         }
     }
 
-    pub fn write_bytes(&self, value: &[u8]) -> Result<(), io::Error> {
+    pub fn write_bytes(&self, value: &[u8]) -> Result<(), ProcessError> {
         self.memory().write(value)
     }
 
-    pub fn read_bytes(&self, buf: &mut [u8]) -> Result<(), io::Error> {
+    pub fn read_bytes(&self, buf: &mut [u8]) -> Result<(), ProcessError> {
         self.memory().read(buf)
     }
 
@@ -167,13 +167,13 @@ impl<T: ?Sized> RemoteBox<T> {
 }
 
 impl<T: ?Sized + Copy> RemoteBox<T> {
-    pub fn write(&self, value: &T) -> Result<(), io::Error> {
+    pub fn write(&self, value: &T) -> Result<(), ProcessError> {
         self.allocation.memory().write_struct(value)
     }
 }
 
 impl<T: Sized + Copy> RemoteBox<T> {
-    pub fn read(&self) -> Result<T, io::Error> {
+    pub fn read(&self) -> Result<T, ProcessError> {
         unsafe { self.allocation.memory().read_struct() }
     }
 

@@ -33,7 +33,10 @@ impl<'a> DynamicMultiBufferAllocator<'a> {
         self.process.borrowed()
     }
 
-    fn alloc_page(&mut self, min_size: usize) -> Result<&mut FixedBufferAllocator<'a>, io::Error> {
+    fn alloc_page(
+        &mut self,
+        min_size: usize,
+    ) -> Result<&mut FixedBufferAllocator<'a>, ProcessError> {
         let os_page_size = os_page_size();
         let page_size = (min_size / os_page_size + 1) * os_page_size;
         let mem = ProcessMemoryBuffer::allocate(self.process, page_size)?;

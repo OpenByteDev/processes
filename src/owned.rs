@@ -25,7 +25,9 @@ use winapi::{
     },
 };
 
-use crate::{raw, BorrowedProcess, OwnedProcessModule, Process, ProcessHandle};
+use crate::{
+    error::ProcessError, raw, BorrowedProcess, OwnedProcessModule, Process, ProcessHandle,
+};
 
 /// A struct representing a running process.
 /// This struct owns the underlying process handle (see also [`BorrowedProcess`] for a borrowed version).
@@ -75,7 +77,7 @@ impl From<Child> for OwnedProcess {
 }
 
 impl TryFrom<BorrowedProcess<'_>> for OwnedProcess {
-    type Error = io::Error;
+    type Error = ProcessError;
 
     fn try_from(process: BorrowedProcess<'_>) -> Result<Self, Self::Error> {
         process.try_to_owned()
@@ -103,7 +105,7 @@ impl Process for OwnedProcess {
         unsafe { BorrowedProcess::from_handle_unchecked(self.as_handle()) }
     }
 
-    fn try_clone(&self) -> Result<Self, io::Error> {
+    fn try_clone(&self) -> Result<Self, ProcessError> {
         self.borrowed().try_to_owned()
     }
 
@@ -122,7 +124,7 @@ impl Process for OwnedProcess {
     fn find_module_by_name(
         &self,
         module_name: impl AsRef<Path>,
-    ) -> Result<Option<OwnedProcessModule>, io::Error> {
+    ) -> Result<Option<OwnedProcessModule>, ProcessError> {
         if let Some(module) = self.borrowed().find_module_by_name(module_name)? {
             Ok(Some(module.try_to_owned()?))
         } else {
@@ -133,7 +135,7 @@ impl Process for OwnedProcess {
     fn find_module_by_path(
         &self,
         module_path: impl AsRef<Path>,
-    ) -> Result<Option<OwnedProcessModule>, io::Error> {
+    ) -> Result<Option<OwnedProcessModule>, ProcessError> {
         if let Some(module) = self.borrowed().find_module_by_path(module_path)? {
             Ok(Some(module.try_to_owned()?))
         } else {
@@ -145,7 +147,7 @@ impl Process for OwnedProcess {
         &self,
         module_name: impl AsRef<Path>,
         timeout: Duration,
-    ) -> Result<Option<OwnedProcessModule>, io::Error> {
+    ) -> Result<Option<OwnedProcessModule>, ProcessError> {
         if let Some(module) = self
             .borrowed()
             .wait_for_module_by_name(module_name, timeout)?
@@ -160,7 +162,7 @@ impl Process for OwnedProcess {
         &self,
         module_path: impl AsRef<Path>,
         timeout: Duration,
-    ) -> Result<Option<OwnedProcessModule>, io::Error> {
+    ) -> Result<Option<OwnedProcessModule>, ProcessError> {
         if let Some(module) = self
             .borrowed()
             .wait_for_module_by_path(module_path, timeout)?
@@ -174,7 +176,7 @@ impl Process for OwnedProcess {
 
 impl OwnedProcess {
     /// Creates a new instance from the given pid.
-    pub fn from_pid(pid: u32) -> Result<OwnedProcess, io::Error> {
+    pub fn from_pid(pid: u32) -> Result<OwnedProcess, ProcessError> {
         unsafe {
             Self::from_pid_with_access(
                 pid,
@@ -194,18 +196,21 @@ impl OwnedProcess {
     ///
     /// # Safety
     /// `access` must be a valid set of process-specific access rights.
-    pub unsafe fn from_pid_with_access(pid: u32, access: u32) -> Result<OwnedProcess, io::Error> {
+    pub unsafe fn from_pid_with_access(
+        pid: u32,
+        access: u32,
+    ) -> Result<OwnedProcess, ProcessError> {
         let handle = unsafe { OpenProcess(access, FALSE, pid) };
 
         if handle.is_null() {
-            return Err(io::Error::last_os_error());
+            return Err(io::Error::last_os_error().into());
         }
 
         Ok(unsafe { OwnedProcess::from_raw_handle(handle) })
     }
 
     /// Returns a list of all currently running processes.
-    pub fn all() -> Result<impl Iterator<Item = OwnedProcess>, io::Error> {
+    pub fn all() -> Result<impl Iterator<Item = OwnedProcess>, ProcessError> {
         let iter = raw::iter_process_ids()?
             .map(OwnedProcess::from_pid)
             .filter_map(|r| r.ok());
@@ -215,7 +220,7 @@ impl OwnedProcess {
     /// Finds all processes whose name contains the given string.
     pub fn find_all_by_name(
         name: impl AsRef<str>,
-    ) -> Result<impl Iterator<Item = OwnedProcess>, io::Error> {
+    ) -> Result<impl Iterator<Item = OwnedProcess>, ProcessError> {
         let target_name = name.as_ref().to_ascii_lowercase();
         // TODO: optimize
         let iter = Self::all()?.filter(move |process| {
@@ -229,7 +234,7 @@ impl OwnedProcess {
     }
 
     /// Finds the first process whose name contains the given string.
-    pub fn find_first_by_name(name: impl AsRef<str>) -> Result<Option<OwnedProcess>, io::Error> {
+    pub fn find_first_by_name(name: impl AsRef<str>) -> Result<Option<OwnedProcess>, ProcessError> {
         Ok(Self::find_all_by_name(name)?.next())
     }
 
@@ -253,7 +258,7 @@ impl OwnedProcess {
     }
 
     /// Creates a new owning [`Process`] instance for this process by duplicating the underlying handle.
-    pub fn try_clone(&self) -> Result<Self, io::Error> {
+    pub fn try_clone(&self) -> Result<Self, ProcessError> {
         self.borrowed().try_to_owned()
     }
 

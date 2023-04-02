@@ -1,4 +1,4 @@
-use processes::{BorrowedProcess, OwnedProcess, Process};
+use processes::{BorrowedProcess, OwnedProcess, Process, ProcessError};
 use std::{fs, mem, time::Duration};
 
 #[allow(unused)]
@@ -33,8 +33,20 @@ process_test! {
         process: OwnedProcess
     ) {
         process.kill().unwrap();
+        assert!(!process.is_alive());
         // assert this does not hang
         let _ = process.borrowed().module_handles();
+    }
+}
+
+process_test! {
+    fn list_modules_on_crashed_does_return_correct_error(
+        process: OwnedProcess
+    ) {
+        process.kill().unwrap();
+        assert!(!process.is_alive());
+        assert!(matches!(process.borrowed().module_handles(), Err(ProcessError::ProcessInaccessible)));
+        assert!(matches!(process.borrowed().modules(), Err(ProcessError::ProcessInaccessible)));
     }
 }
 

@@ -30,8 +30,8 @@ use winapi::{
 use winresult::NtStatus;
 
 use crate::{
-    memory::ProcessMemory, utils::retry_faillable_until_some_with_timeout, ModuleHandle,
-    OwnedProcess, Process, ProcessModule,
+    error::ProcessError, memory::ProcessMemory, utils::retry_faillable_until_some_with_timeout,
+    ModuleHandle, OwnedProcess, Process, ProcessModule,
 };
 
 /// A struct representing a running process.
@@ -109,7 +109,7 @@ impl<'a> Process for BorrowedProcess<'a> {
         self.0
     }
 
-    fn try_clone(&self) -> Result<Self, io::Error> {
+    fn try_clone(&self) -> Result<Self, ProcessError> {
         Ok(*self)
     }
 
@@ -124,7 +124,7 @@ impl<'a> Process for BorrowedProcess<'a> {
     fn find_module_by_name(
         &self,
         module_name: impl AsRef<Path>,
-    ) -> Result<Option<ProcessModule<BorrowedProcess<'a>>>, io::Error> {
+    ) -> Result<Option<ProcessModule<BorrowedProcess<'a>>>, ProcessError> {
         let target_module_name = module_name.as_ref();
 
         // add default file extension if missing
@@ -151,7 +151,7 @@ impl<'a> Process for BorrowedProcess<'a> {
     fn find_module_by_path(
         &self,
         module_path: impl AsRef<Path>,
-    ) -> Result<Option<ProcessModule<BorrowedProcess<'a>>>, io::Error> {
+    ) -> Result<Option<ProcessModule<BorrowedProcess<'a>>>, ProcessError> {
         let target_module_path = module_path.as_ref();
 
         // add default file extension if missing
@@ -190,7 +190,7 @@ impl<'a> Process for BorrowedProcess<'a> {
         &self,
         module_name: impl AsRef<Path>,
         timeout: Duration,
-    ) -> Result<Option<ProcessModule<BorrowedProcess<'a>>>, io::Error> {
+    ) -> Result<Option<ProcessModule<BorrowedProcess<'a>>>, ProcessError> {
         retry_faillable_until_some_with_timeout(
             || self.find_module_by_name(module_name.as_ref()),
             timeout,
@@ -201,7 +201,7 @@ impl<'a> Process for BorrowedProcess<'a> {
         &self,
         module_path: impl AsRef<Path>,
         timeout: Duration,
-    ) -> Result<Option<ProcessModule<BorrowedProcess<'a>>>, io::Error> {
+    ) -> Result<Option<ProcessModule<BorrowedProcess<'a>>>, ProcessError> {
         retry_faillable_until_some_with_timeout(
             || self.find_module_by_path(module_path.as_ref()),
             timeout,
@@ -211,7 +211,7 @@ impl<'a> Process for BorrowedProcess<'a> {
 
 impl<'a> BorrowedProcess<'a> {
     /// Tries to create a new [`OwnedProcess`] instance for this process.
-    pub fn try_to_owned(&self) -> Result<OwnedProcess, io::Error> {
+    pub fn try_to_owned(&self) -> Result<OwnedProcess, ProcessError> {
         let raw_handle = self.as_raw_handle();
         let process = unsafe { GetCurrentProcess() };
         let mut new_handle = MaybeUninit::uninit();
@@ -227,7 +227,7 @@ impl<'a> BorrowedProcess<'a> {
             )
         };
         if result == 0 {
-            return Err(io::Error::last_os_error());
+            return Err(io::Error::last_os_error().into());
         }
         Ok(unsafe { OwnedProcess::from_raw_handle(new_handle.assume_init()) })
     }
@@ -239,7 +239,7 @@ impl<'a> BorrowedProcess<'a> {
     /// This can be worked around by repeatedly calling this method.
     pub fn module_handles(
         &self,
-    ) -> Result<impl Iterator<Item = io::Result<ModuleHandle>> + '_, io::Error> {
+    ) -> Result<impl Iterator<Item = Result<ModuleHandle, ProcessError>> + '_, ProcessError> {
         struct PebModuleListIterator<'a> {
             memory: ProcessMemory<'a>,
             next: NonNull<LIST_ENTRY>,
@@ -247,7 +247,7 @@ impl<'a> BorrowedProcess<'a> {
         }
 
         impl Iterator for PebModuleListIterator<'_> {
-            type Item = io::Result<ModuleHandle>;
+            type Item = Result<ModuleHandle, ProcessError>;
 
             fn next(&mut self) -> Option<Self::Item> {
                 if self.next == self.header {
@@ -259,7 +259,7 @@ impl<'a> BorrowedProcess<'a> {
                     as *mut LDR_DATA_TABLE_ENTRY;
                 let module = match unsafe { self.memory.read_struct(module_ptr) } {
                     Ok(m) => m,
-                    Err(e) => return Some(Err(e)),
+                    Err(e) => return Some(Err(e.into())),
                 };
                 let entry = module.InLoadOrderLinks;
                 self.next = NonNull::new(entry.Flink).unwrap();
@@ -287,7 +287,7 @@ impl<'a> BorrowedProcess<'a> {
         if result.is_error() {
             let code = unsafe { RtlNtStatusToDosError(result.to_u32() as i32) };
             let error = io::Error::from_raw_os_error(code as i32);
-            return Err(error);
+            return Err(error.into());
         }
         let bytes_written = unsafe { bytes_written.assume_init() } as usize;
         assert_eq!(bytes_written, mem::size_of::<PROCESS_BASIC_INFORMATION>());
@@ -298,13 +298,13 @@ impl<'a> BorrowedProcess<'a> {
                 let peb = unsafe { memory.read_struct(process_info.PebBaseAddress) }?;
                 if peb.Ldr.is_null() {
                     // this case occurs if called shortly after startup.
-                    return Ok::<_, io::Error>(None);
+                    return Ok::<_, ProcessError>(None);
                 }
                 Ok(Some(peb))
             },
             Duration::from_millis(100),
         )?
-        .unwrap();
+        .ok_or_else(|| ProcessError::ProcessInaccessible)?;
         let ldr = unsafe { memory.read_struct(peb.Ldr) }?;
 
         let iter = PebModuleListIterator {
