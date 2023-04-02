@@ -2,7 +2,7 @@ use std::{collections::LinkedList, io, mem, ptr::NonNull};
 
 use crate::{
     memory::{os_page_size, ProcessMemoryBuffer},
-    BorrowedProcess, Process,
+    BorrowedProcess, Process, ProcessError
 };
 
 pub trait RawAllocator {
@@ -55,14 +55,14 @@ impl<'a> DynamicMultiBufferAllocator<'a> {
 }
 
 impl<'a> RawAllocator for DynamicMultiBufferAllocator<'a> {
-    type Error = io::Error;
+    type Error = ProcessError;
     type Alloc = Allocation;
 
     fn alloc(&mut self, size: usize) -> Result<Self::Alloc, Self::Error> {
         for page in &mut self.pages {
             match page.alloc(size) {
                 Ok(allocation) => return Ok(allocation),
-                Err(AllocError::Io(e)) => return Err(e),
+                Err(AllocError::Io(e)) => return Err(ProcessError::Io(e)),
                 Err(AllocError::OutOfMemory) => continue,
             }
         }
@@ -70,7 +70,7 @@ impl<'a> RawAllocator for DynamicMultiBufferAllocator<'a> {
         let page = self.alloc_page(size)?;
         match page.alloc(size) {
             Ok(allocation) => Ok(allocation),
-            Err(AllocError::Io(e)) => Err(e),
+            Err(AllocError::Io(e)) => Err(ProcessError::Io(e)),
             Err(AllocError::OutOfMemory) => unreachable!(),
         }
     }

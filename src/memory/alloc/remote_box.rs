@@ -1,11 +1,11 @@
-use std::{cell::RefCell, io, marker::PhantomData, mem, ptr::NonNull, rc::Rc, slice};
+use std::{cell::RefCell, marker::PhantomData, mem, ptr::NonNull, rc::Rc, slice};
 
 use crate::{
     memory::{
         alloc::{Allocation, DynamicMultiBufferAllocator, RawAllocator},
         ProcessMemorySlice,
     },
-    BorrowedProcess, OwnedProcess, Process,
+    BorrowedProcess, OwnedProcess, Process, ProcessError
 };
 
 #[derive(Debug, Clone)]
