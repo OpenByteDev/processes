@@ -5,7 +5,7 @@ use crate::{
         alloc::{Allocation, DynamicMultiBufferAllocator, RawAllocator},
         ProcessMemorySlice,
     },
-    BorrowedProcess, OwnedProcess, Process, ProcessError
+    BorrowedProcess, OwnedProcess, Process, ProcessError,
 };
 
 #[derive(Debug, Clone)]
