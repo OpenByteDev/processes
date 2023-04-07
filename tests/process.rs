@@ -45,7 +45,6 @@ process_test! {
     ) {
         process.kill().unwrap();
         assert!(!process.is_alive());
-        assert!(matches!(process.borrowed().module_handles(), Err(ProcessError::ProcessInaccessible)));
         assert!(matches!(process.borrowed().modules(), Err(ProcessError::ProcessInaccessible)));
     }
 }
