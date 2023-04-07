@@ -5,8 +5,7 @@ use crate::{error::ProcessError, BorrowedProcess};
 use super::{ProcessMemoryBuffer, ProcessMemorySlice};
 
 /// A struct representing the memory region of a process.
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "process-memory")))]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct ProcessMemory<'a> {
     /// The process that owns the memory.
     pub process: BorrowedProcess<'a>,

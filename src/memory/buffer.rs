@@ -29,7 +29,6 @@ pub fn os_page_size() -> usize {
 }
 
 /// A owned buffer in the memory space of some process.
-#[cfg_attr(feature = "doc-cfg", doc(cfg(feature = "process-memory")))]
 #[derive(Debug)]
 pub struct ProcessMemoryBuffer<'a>(ProcessMemorySlice<'a>);
 
