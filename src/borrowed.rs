@@ -293,18 +293,20 @@ impl<'a> BorrowedProcess<'a> {
         assert_eq!(bytes_written, mem::size_of::<PROCESS_BASIC_INFORMATION>());
 
         let process_info = unsafe { process_info.assume_init() };
-        let peb = retry_faillable_until_some_with_timeout(
-            || {
-                let peb = unsafe { memory.read_struct(process_info.PebBaseAddress) }?;
-                if peb.Ldr.is_null() {
-                    // this case occurs if called shortly after startup.
-                    return Ok::<_, ProcessError>(None);
-                }
-                Ok(Some(peb))
-            },
-            Duration::from_millis(100),
-        )?
-        .ok_or_else(|| ProcessError::ProcessInaccessible)?;
+        let peb = unsafe { memory.read_struct(process_info.PebBaseAddress) }?;
+        if peb.Ldr.is_null() {
+            if !self.is_alive() {
+                return Err(ProcessError::ProcessInaccessible);
+            }
+
+            // this case occurs if called shortly after startup.
+            let dummy_ptr = NonNull::new(1 as *mut _).unwrap();
+            return Ok(PebModuleListIterator {
+                memory,
+                next: dummy_ptr,
+                header: dummy_ptr,
+            });
+        }
         let ldr = unsafe { memory.read_struct(peb.Ldr) }?;
 
         let iter = PebModuleListIterator {
