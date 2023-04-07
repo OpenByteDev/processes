@@ -1,5 +1,6 @@
 use std::{
     ffi::{CStr, CString, OsStr, OsString},
+    fmt::{self, Debug},
     io,
     mem::{self, MaybeUninit},
     path::{Path, PathBuf},
@@ -36,10 +37,20 @@ use winapi::{
 pub type ModuleHandle = HMODULE;
 
 /// A struct representing a loaded module of a running process.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ProcessModule<P: Process> {
     handle: NonNull<HINSTANCE__>,
     process: P,
+}
+
+impl<P: Process + Debug> Debug for ProcessModule<P> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ProcessModule")
+            .field("handle", &self.handle)
+            .field("base_name", &self.base_name())
+            .field("process", &self.process)
+            .finish()
+    }
 }
 
 /// Type alias for a [`ProcessModule`] that owns its [`Process`] instance.

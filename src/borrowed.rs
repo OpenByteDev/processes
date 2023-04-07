@@ -1,5 +1,6 @@
 use std::{
     borrow::Cow,
+    fmt::{self, Debug},
     hash::{Hash, Hasher},
     io,
     mem::{self, MaybeUninit},
@@ -45,8 +46,18 @@ use crate::{
 ///  - `PROCESS_VM_WRITE`
 ///  - `PROCESS_VM_READ`
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct BorrowedProcess<'a>(BorrowedHandle<'a>);
+
+impl Debug for BorrowedProcess<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("BorrowedProcess")
+            .field("handle", &self.as_raw_handle())
+            .field("base_name", &self.base_name())
+            .field("alive", &self.is_alive())
+            .finish()
+    }
+}
 
 unsafe impl Send for BorrowedProcess<'_> {}
 unsafe impl Sync for BorrowedProcess<'_> {}

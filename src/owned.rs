@@ -1,4 +1,5 @@
 use std::{
+    fmt::{self, Debug, Display},
     hash::{Hash, Hasher},
     io,
     os::windows::{
@@ -40,8 +41,17 @@ use crate::{
 ///  - `PROCESS_VM_WRITE`
 ///  - `PROCESS_VM_READ`
 #[repr(transparent)]
-#[derive(Debug)]
 pub struct OwnedProcess(OwnedHandle);
+
+impl Debug for OwnedProcess {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("OwnedProcess")
+            .field("handle", &self.as_raw_handle())
+            .field("base_name", &self.base_name())
+            .field("alive", &self.is_alive())
+            .finish()
+    }
+}
 
 unsafe impl Send for OwnedProcess {}
 unsafe impl Sync for OwnedProcess {}
