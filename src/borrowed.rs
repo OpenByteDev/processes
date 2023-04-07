@@ -259,7 +259,7 @@ impl<'a> BorrowedProcess<'a> {
                     as *mut LDR_DATA_TABLE_ENTRY;
                 let module = match unsafe { self.memory.read_struct(module_ptr) } {
                     Ok(m) => m,
-                    Err(e) => return Some(Err(e.into())),
+                    Err(e) => return Some(Err(e)),
                 };
                 let entry = module.InLoadOrderLinks;
                 self.next = NonNull::new(entry.Flink).unwrap();

@@ -149,7 +149,7 @@ impl<P: Process> ProcessModule<P> {
         module: &Path,
     ) -> Result<Option<ProcessModule<P>>, ProcessError> {
         let module = U16CString::from_os_str(module.as_os_str())?;
-        Self::find_local_by_name_or_abs_path_wstr(&module).map_err(|e| e.into())
+        Self::find_local_by_name_or_abs_path_wstr(&module)
     }
 
     #[doc(hidden)]
