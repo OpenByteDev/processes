@@ -61,7 +61,7 @@ pub fn current() -> BorrowedProcess<'static> {
     BorrowedProcess::current()
 }
 
-/// Returns a list of all currently running processes.
+/// Returns an iterator over all currently running processes.
 pub fn all() -> Result<impl Iterator<Item = OwnedProcess>, ProcessError> {
     OwnedProcess::all()
 }
