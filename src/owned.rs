@@ -1,5 +1,5 @@
 use std::{
-    fmt::{self, Debug, Display},
+    fmt::{self, Debug},
     hash::{Hash, Hasher},
     io,
     os::windows::{
