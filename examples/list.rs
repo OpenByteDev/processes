@@ -1,4 +1,4 @@
-use processes::{self, Process};
+use processes::{self};
 
 pub fn main() {
     for process in processes::all().unwrap() {

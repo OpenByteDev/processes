@@ -17,7 +17,7 @@ use winapi::{
     },
 };
 
-use crate::{error::ProcessError, utils, BorrowedProcess, Process};
+use crate::{error::ProcessError, utils, BorrowedProcess};
 
 /// Returns the memory page size of the operating system.
 #[must_use]

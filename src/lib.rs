@@ -28,6 +28,9 @@
 #![cfg_attr(not(feature = "doc-cfg"), allow(missing_docs))]
 #![cfg_attr(feature = "doc-cfg", feature(doc_cfg))]
 
+mod handle;
+pub use handle::*;
+
 mod process;
 pub use process::*;
 

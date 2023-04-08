@@ -3,6 +3,7 @@ use std::{
     fmt::{self, Debug},
     io,
     mem::{self, MaybeUninit},
+    os::windows::prelude::{AsRawHandle, BorrowedHandle, OwnedHandle},
     path::{Path, PathBuf},
     ptr::NonNull,
 };
@@ -10,8 +11,7 @@ use std::{
 use crate::{
     error::{GetLocalProcedureAddressError, ProcessError},
     function::RawFunctionPtr,
-    utils::{get_win_ffi_path, get_win_ffi_string, TryFillBufResult},
-    BorrowedProcess, OwnedProcess, Process,
+    utils::{get_win_ffi_path, get_win_ffi_string, TryFillBufResult}, Process, ProcessHandle,
 };
 use path_absolutize::Absolutize;
 use widestring::{U16CStr, U16CString, U16Str};
@@ -36,14 +36,19 @@ use winapi::{
 /// which is the base address of a loaded module.
 pub type ModuleHandle = HMODULE;
 
+/// The pointer target of a [`ModuleHandle`]. 
+pub type ModuleHandleTarget = HINSTANCE__;
+
 /// A struct representing a loaded module of a running process.
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ProcessModule<P: Process> {
-    handle: NonNull<HINSTANCE__>,
-    process: P,
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct ProcessModule<P: ProcessHandle> {
+    handle: NonNull<ModuleHandleTarget>,
+    process: Process<P>,
 }
 
-impl<P: Process + Debug> Debug for ProcessModule<P> {
+impl<P: Copy + ProcessHandle> Copy for ProcessModule<P> {}
+
+impl<P: ProcessHandle + Debug> Debug for ProcessModule<P> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ProcessModule")
             .field("handle", &self.handle)
@@ -54,20 +59,20 @@ impl<P: Process + Debug> Debug for ProcessModule<P> {
 }
 
 /// Type alias for a [`ProcessModule`] that owns its [`Process`] instance.
-pub type OwnedProcessModule = ProcessModule<OwnedProcess>;
+pub type OwnedProcessModule = ProcessModule<OwnedHandle>;
 /// Type alias for a [`ProcessModule`] that does **NOT** own its [`Process`] instance.
-pub type BorrowedProcessModule<'a> = ProcessModule<BorrowedProcess<'a>>;
+pub type BorrowedProcessModule<'a> = ProcessModule<BorrowedHandle<'a>>;
 
-unsafe impl<P: Process + Send> Send for ProcessModule<P> {}
-unsafe impl<P: Process + Sync> Sync for ProcessModule<P> {}
+unsafe impl<P: ProcessHandle + Send> Send for ProcessModule<P> {}
+unsafe impl<P: ProcessHandle + Sync> Sync for ProcessModule<P> {}
 
-impl<P: Process> ProcessModule<P> {
+impl<P: ProcessHandle> ProcessModule<P> {
     /// Contructs a new instance from the given module handle and its corresponding process.
     ///
     /// # Safety
     /// The caller must guarantee that the given handle is valid and that the module is loaded into the given process.
     /// (and stays that way while using the returned instance).
-    pub unsafe fn new_unchecked(handle: ModuleHandle, process: P) -> Self {
+    pub unsafe fn new_unchecked(handle: ModuleHandle, process: Process<P>) -> Self {
         debug_assert!(!handle.is_null());
         let handle = unsafe { NonNull::new_unchecked(handle) };
         Self { handle, process }
@@ -79,7 +84,7 @@ impl<P: Process> ProcessModule<P> {
     /// The caller must guarantee that the given handle is valid and that the module is loaded into the given process.
     /// (and stays that way while using the returned instance).
     pub unsafe fn new_local_unchecked(handle: ModuleHandle) -> Self {
-        unsafe { ProcessModule::new_unchecked(handle, P::current()) }
+        unsafe { ProcessModule::new_unchecked(handle, Process::current()) }
     }
 
     /// Returns a borrowed instance of this module.
@@ -94,7 +99,7 @@ impl<P: Process> ProcessModule<P> {
     /// If the extension is omitted, the default library extension `.dll` is appended.
     pub fn find(
         module_name_or_path: impl AsRef<Path>,
-        process: P,
+        process: Process<P>,
     ) -> Result<Option<ProcessModule<P>>, ProcessError> {
         let module_name_or_path = module_name_or_path.as_ref();
         if module_name_or_path.parent().is_some() {
@@ -108,7 +113,7 @@ impl<P: Process> ProcessModule<P> {
     /// If the extension is omitted, the default library extension `.dll` is appended.
     pub fn find_by_name(
         module_name: impl AsRef<Path>,
-        process: P,
+        process: Process<P>,
     ) -> Result<Option<ProcessModule<P>>, ProcessError> {
         if process.is_current() {
             Self::find_local_by_name(module_name)
@@ -121,7 +126,7 @@ impl<P: Process> ProcessModule<P> {
     /// If the extension is omitted, the default library extension `.dll` is appended.
     pub fn find_by_path(
         module_path: impl AsRef<Path>,
-        process: P,
+        process: Process<P>,
     ) -> Result<Option<ProcessModule<P>>, ProcessError> {
         if process.is_current() {
             Self::find_local_by_path(module_path)
@@ -135,7 +140,7 @@ impl<P: Process> ProcessModule<P> {
     pub fn find_local(
         module_name_or_path: impl AsRef<Path>,
     ) -> Result<Option<ProcessModule<P>>, ProcessError> {
-        Self::find(module_name_or_path, P::current())
+        Self::find(module_name_or_path, Process::current())
     }
 
     /// Searches for a module with the given name in the current process.
@@ -182,7 +187,7 @@ impl<P: Process> ProcessModule<P> {
 
     fn _find_remote_by_name(
         module_name: impl AsRef<Path>,
-        process: P,
+        process: Process<P>,
     ) -> Result<Option<ProcessModule<P>>, ProcessError> {
         assert!(!process.is_current());
 
@@ -191,7 +196,7 @@ impl<P: Process> ProcessModule<P> {
 
     fn _find_remote_by_path(
         module_path: impl AsRef<Path>,
-        process: P,
+        process: Process<P>,
     ) -> Result<Option<ProcessModule<P>>, ProcessError> {
         assert!(!process.is_current());
 
@@ -206,7 +211,7 @@ impl<P: Process> ProcessModule<P> {
 
     /// Returns the process this module is loaded in.
     #[must_use]
-    pub fn process(&self) -> &P {
+    pub fn process(&self) -> &Process<P> {
         &self.process
     }
 
@@ -404,7 +409,7 @@ impl<P: Process> ProcessModule<P> {
 }
 
 impl BorrowedProcessModule<'_> {
-    /// Tries to create a new [`OwnedProcessModule`] instance for this process module.
+    /// Trys to create a new [`OwnedProcessModule`] instance for this process module.
     pub fn try_to_owned(&self) -> Result<OwnedProcessModule, ProcessError> {
         self.process
             .try_to_owned()
