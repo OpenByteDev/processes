@@ -152,59 +152,6 @@ impl OwnedProcess {
     pub const fn kill_on_drop(self) -> ProcessKillGuard {
         ProcessKillGuard(self)
     }
-
-    /*
-    pub fn find_module_by_name(
-        &self,
-        module_name: impl AsRef<Path>,
-    ) -> Result<Option<OwnedProcessModule>, ProcessError> {
-        if let Some(module) = self.borrowed().find_module_by_name(module_name)? {
-            Ok(Some(module.try_to_owned()?))
-        } else {
-            Ok(None)
-        }
-    }
-
-    pub fn find_module_by_path(
-        &self,
-        module_path: impl AsRef<Path>,
-    ) -> Result<Option<OwnedProcessModule>, ProcessError> {
-        if let Some(module) = self.borrowed().find_module_by_path(module_path)? {
-            Ok(Some(module.try_to_owned()?))
-        } else {
-            Ok(None)
-        }
-    }
-
-    pub fn wait_for_module_by_name(
-        &self,
-        module_name: impl AsRef<Path>,
-        timeout: Duration,
-    ) -> Result<Option<OwnedProcessModule>, ProcessError> {
-        if let Some(module) = self
-            .borrowed()
-            .wait_for_module_by_name(module_name, timeout)?
-        {
-            Ok(Some(module.try_to_owned()?))
-        } else {
-            Ok(None)
-        }
-    }
-
-    pub fn wait_for_module_by_path(
-        &self,
-        module_path: impl AsRef<Path>,
-        timeout: Duration,
-    ) -> Result<Option<OwnedProcessModule>, ProcessError> {
-        if let Some(module) = self
-            .borrowed()
-            .wait_for_module_by_path(module_path, timeout)?
-        {
-            Ok(Some(module.try_to_owned()?))
-        } else {
-            Ok(None)
-        }
-    }*/
 }
 
 #[derive(Debug, shrinkwraprs::Shrinkwrap)]
