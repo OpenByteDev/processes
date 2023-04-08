@@ -5,7 +5,7 @@ use crate::{
         alloc::{Allocation, DynamicMultiBufferAllocator, RawAllocator},
         ProcessMemorySlice,
     },
-    BorrowedProcess, OwnedProcess, Process, ProcessError,
+    BorrowedProcess, OwnedProcess, ProcessError,
 };
 
 #[derive(Debug, Clone)]
@@ -22,7 +22,7 @@ impl RemoteBoxAllocator {
     pub fn new(process: OwnedProcess) -> Self {
         Self(Rc::new(RemoteBoxAllocatorInner {
             allocator: RefCell::new(DynamicMultiBufferAllocator::new(unsafe {
-                process.borrowed_static()
+                process.borrow_static()
             })),
             process,
         }))

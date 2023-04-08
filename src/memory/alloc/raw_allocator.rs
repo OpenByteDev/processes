@@ -2,7 +2,7 @@ use std::{collections::LinkedList, io, mem, ptr::NonNull};
 
 use crate::{
     memory::{os_page_size, ProcessMemoryBuffer},
-    BorrowedProcess, Process, ProcessError,
+    BorrowedProcess, ProcessError,
 };
 
 pub trait RawAllocator {
