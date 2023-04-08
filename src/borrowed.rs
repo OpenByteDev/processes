@@ -26,7 +26,9 @@ impl FromRawProcessHandle for BorrowedHandle<'_> {
     }
 }
 
+#[allow(warnings)]
 unsafe impl Send for BorrowedProcess<'_> {}
+#[allow(warnings)]
 unsafe impl Sync for BorrowedProcess<'_> {}
 
 impl<'a, Handle: ProcessHandle> From<&'a Process<Handle>> for BorrowedProcess<'a> {

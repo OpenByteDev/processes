@@ -43,7 +43,9 @@ impl FromRawProcessHandle for OwnedHandle {
     }
 }
 
+#[allow(warnings)]
 unsafe impl Send for OwnedProcess {}
+#[allow(warnings)]
 unsafe impl Sync for OwnedProcess {}
 
 impl From<Child> for OwnedProcess {
