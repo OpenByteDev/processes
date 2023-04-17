@@ -11,7 +11,8 @@ use std::{
 use crate::{
     error::{GetLocalProcedureAddressError, ProcessError},
     function::RawFunctionPtr,
-    utils::{get_win_ffi_path, get_win_ffi_string, TryFillBufResult}, Process, ProcessHandle,
+    utils::{get_win_ffi_path, get_win_ffi_string, TryFillBufResult},
+    Process, ProcessHandle, ProcessOrPathError,
 };
 use path_absolutize::Absolutize;
 use widestring::{U16CStr, U16CString, U16Str};
@@ -36,7 +37,7 @@ use winapi::{
 /// which is the base address of a loaded module.
 pub type ModuleHandle = HMODULE;
 
-/// The pointer target of a [`ModuleHandle`]. 
+/// The pointer target of a [`ModuleHandle`].
 pub type ModuleHandleTarget = HINSTANCE__;
 
 /// A struct representing a loaded module of a running process.
@@ -100,7 +101,7 @@ impl<P: ProcessHandle> ProcessModule<P> {
     pub fn find(
         module_name_or_path: impl AsRef<Path>,
         process: Process<P>,
-    ) -> Result<Option<ProcessModule<P>>, ProcessError> {
+    ) -> Result<Option<ProcessModule<P>>, ProcessOrPathError> {
         let module_name_or_path = module_name_or_path.as_ref();
         if module_name_or_path.parent().is_some() {
             Self::find_by_path(module_name_or_path, process)
@@ -114,7 +115,7 @@ impl<P: ProcessHandle> ProcessModule<P> {
     pub fn find_by_name(
         module_name: impl AsRef<Path>,
         process: Process<P>,
-    ) -> Result<Option<ProcessModule<P>>, ProcessError> {
+    ) -> Result<Option<ProcessModule<P>>, ProcessOrPathError> {
         if process.is_current() {
             Self::find_local_by_name(module_name)
         } else {
@@ -127,7 +128,7 @@ impl<P: ProcessHandle> ProcessModule<P> {
     pub fn find_by_path(
         module_path: impl AsRef<Path>,
         process: Process<P>,
-    ) -> Result<Option<ProcessModule<P>>, ProcessError> {
+    ) -> Result<Option<ProcessModule<P>>, ProcessOrPathError> {
         if process.is_current() {
             Self::find_local_by_path(module_path)
         } else {
@@ -139,7 +140,7 @@ impl<P: ProcessHandle> ProcessModule<P> {
     /// If the extension is omitted, the default library extension `.dll` is appended.
     pub fn find_local(
         module_name_or_path: impl AsRef<Path>,
-    ) -> Result<Option<ProcessModule<P>>, ProcessError> {
+    ) -> Result<Option<ProcessModule<P>>, ProcessOrPathError> {
         Self::find(module_name_or_path, Process::current())
     }
 
@@ -147,7 +148,7 @@ impl<P: ProcessHandle> ProcessModule<P> {
     /// If the extension is omitted, the default library extension `.dll` is appended.
     pub fn find_local_by_name(
         module_name: impl AsRef<Path>,
-    ) -> Result<Option<ProcessModule<P>>, ProcessError> {
+    ) -> Result<Option<ProcessModule<P>>, ProcessOrPathError> {
         Self::find_local_by_name_or_abs_path(module_name.as_ref())
     }
 
@@ -155,7 +156,7 @@ impl<P: ProcessHandle> ProcessModule<P> {
     /// If the extension is omitted, the default library extension `.dll` is appended.
     pub fn find_local_by_path(
         module_path: impl AsRef<Path>,
-    ) -> Result<Option<ProcessModule<P>>, ProcessError> {
+    ) -> Result<Option<ProcessModule<P>>, ProcessOrPathError> {
         let absolute_path = module_path.as_ref().absolutize()?;
         Self::find_local_by_name_or_abs_path(absolute_path.as_ref())
     }
@@ -163,9 +164,10 @@ impl<P: ProcessHandle> ProcessModule<P> {
     #[doc(hidden)]
     pub fn find_local_by_name_or_abs_path(
         module: &Path,
-    ) -> Result<Option<ProcessModule<P>>, ProcessError> {
-        let module = U16CString::from_os_str(module.as_os_str())?;
-        Self::find_local_by_name_or_abs_path_wstr(&module)
+    ) -> Result<Option<ProcessModule<P>>, ProcessOrPathError> {
+        let module_str = U16CString::from_os_str(module.as_os_str())?;
+        let module = Self::find_local_by_name_or_abs_path_wstr(&module_str)?;
+        Ok(module)
     }
 
     #[doc(hidden)]
@@ -188,7 +190,7 @@ impl<P: ProcessHandle> ProcessModule<P> {
     fn _find_remote_by_name(
         module_name: impl AsRef<Path>,
         process: Process<P>,
-    ) -> Result<Option<ProcessModule<P>>, ProcessError> {
+    ) -> Result<Option<ProcessModule<P>>, ProcessOrPathError> {
         assert!(!process.is_current());
 
         process.find_module_by_name(module_name)
@@ -197,7 +199,7 @@ impl<P: ProcessHandle> ProcessModule<P> {
     fn _find_remote_by_path(
         module_path: impl AsRef<Path>,
         process: Process<P>,
-    ) -> Result<Option<ProcessModule<P>>, ProcessError> {
+    ) -> Result<Option<ProcessModule<P>>, ProcessOrPathError> {
         assert!(!process.is_current());
 
         process.find_module_by_path(module_path)

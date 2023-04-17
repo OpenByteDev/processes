@@ -35,7 +35,7 @@ use crate::{
     raw,
     utils::{get_win_ffi_path, retry_faillable_until_some_with_timeout, TryFillBufResult},
     BorrowedProcess, FromRawProcessHandle, ModuleHandle, OwnedProcess, ProcessHandle,
-    ProcessModule, RawProcessHandle,
+    ProcessModule, RawProcessHandle, ProcessOrPathError,
 };
 
 use std::fmt::{self, Debug};
@@ -479,8 +479,12 @@ impl<Handle: ProcessHandle> Process<Handle> {
     pub fn find_module_by_name(
         &self,
         module_name: impl AsRef<Path>,
-    ) -> Result<Option<ProcessModule<Handle>>, ProcessError> {
+    ) -> Result<Option<ProcessModule<Handle>>, ProcessOrPathError> {
         let target_module_name = module_name.as_ref();
+
+        if self.is_current() {
+            return ProcessModule::find_local_by_name(target_module_name);
+        }
 
         // add default file extension if missing
         let target_module_name = if target_module_name.extension().is_none() {
@@ -513,8 +517,12 @@ impl<Handle: ProcessHandle> Process<Handle> {
     pub fn find_module_by_path(
         &self,
         module_path: impl AsRef<Path>,
-    ) -> Result<Option<ProcessModule<Handle>>, ProcessError> {
+    ) -> Result<Option<ProcessModule<Handle>>, ProcessOrPathError> {
         let target_module_path = module_path.as_ref();
+
+        if self.is_current() {
+            return ProcessModule::find_local_by_path(target_module_path);
+        }
 
         // add default file extension if missing
         let target_module_path = if target_module_path.extension().is_none() {
@@ -555,7 +563,7 @@ impl<Handle: ProcessHandle> Process<Handle> {
         &self,
         module_name: impl AsRef<Path>,
         timeout: Duration,
-    ) -> Result<Option<ProcessModule<Handle>>, ProcessError> {
+    ) -> Result<Option<ProcessModule<Handle>>, ProcessOrPathError> {
         retry_faillable_until_some_with_timeout(
             || self.find_module_by_name(module_name.as_ref()),
             timeout,
@@ -569,7 +577,7 @@ impl<Handle: ProcessHandle> Process<Handle> {
         &self,
         module_path: impl AsRef<Path>,
         timeout: Duration,
-    ) -> Result<Option<ProcessModule<Handle>>, ProcessError> {
+    ) -> Result<Option<ProcessModule<Handle>>, ProcessOrPathError> {
         retry_faillable_until_some_with_timeout(
             || self.find_module_by_path(module_path.as_ref()),
             timeout,

@@ -10,9 +10,6 @@ pub enum ProcessError {
     /// This can occur if it crashed or was terminated.
     #[error("inaccessible target process")]
     ProcessInaccessible,
-    /// Variant representing an illegal interior nul value in the module path.
-    #[error("path contains illegal interior nul")]
-    IllegalPath(#[from] widestring::error::ContainsNul<u16>),
     /// Variant representing an windows api error.
     #[error("io error: {}", _0)]
     Io(io::Error),
@@ -29,6 +26,41 @@ impl From<io::Error> for ProcessError {
         } else {
             Self::Io(err)
         }
+    }
+}
+
+#[derive(Debug, Error)]
+/// Error enum representing an error of an operation on a process.
+pub enum ProcessOrPathError {
+    /// Variant representing a process error.
+    #[error("process error: {}", _0)]
+    Process(#[from] ProcessError),
+    /// Variant representing an illegal interior nul value in the module path.
+    #[error("path contains illegal interior nul")]
+    IllegalPath,
+}
+
+impl From<io::Error> for ProcessOrPathError {
+    fn from(err: io::Error) -> Self {
+        Self::Process(err.into())
+    }
+}
+
+impl From<widestring::error::ContainsNul<u16>> for ProcessOrPathError {
+    fn from(_err: widestring::error::ContainsNul<u16>) -> Self {
+        Self::IllegalPath
+    }
+}
+
+impl From<std::ffi::FromBytesWithNulError> for ProcessOrPathError {
+    fn from(_err: std::ffi::FromBytesWithNulError) -> Self {
+        Self::IllegalPath
+    }
+}
+
+impl From<std::ffi::NulError> for ProcessOrPathError {
+    fn from(_err: std::ffi::NulError) -> Self {
+        Self::IllegalPath
     }
 }
 
@@ -65,13 +97,7 @@ pub enum GetLocalProcedureAddressError {
 
 impl From<io::Error> for GetLocalProcedureAddressError {
     fn from(err: io::Error) -> Self {
-        if err.raw_os_error() == Some(ERROR_PARTIAL_COPY as _)
-            || err.kind() == io::ErrorKind::PermissionDenied
-        {
-            Self::ProcessInaccessible
-        } else {
-            Self::Io(err)
-        }
+        ProcessError::from(err).into()
     }
 }
 
@@ -79,8 +105,16 @@ impl From<ProcessError> for GetLocalProcedureAddressError {
     fn from(err: ProcessError) -> Self {
         match err {
             ProcessError::ProcessInaccessible => Self::ProcessInaccessible,
-            ProcessError::IllegalPath(_) => Self::IllegalPath,
             ProcessError::Io(e) => Self::Io(e),
+        }
+    }
+}
+
+impl From<ProcessOrPathError> for GetLocalProcedureAddressError {
+    fn from(err: ProcessOrPathError) -> Self {
+        match err {
+            ProcessOrPathError::Process(e) => e.into(),
+            ProcessOrPathError::IllegalPath => Self::IllegalPath,
         }
     }
 }
