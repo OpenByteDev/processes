@@ -35,7 +35,7 @@ use crate::{
     raw,
     utils::{get_win_ffi_path, retry_faillable_until_some_with_timeout, TryFillBufResult},
     BorrowedProcess, FromRawProcessHandle, ModuleHandle, OwnedProcess, ProcessHandle,
-    ProcessModule, RawProcessHandle, ProcessOrPathError,
+    ProcessModule, ProcessOrPathError, RawProcessHandle,
 };
 
 use std::fmt::{self, Debug};

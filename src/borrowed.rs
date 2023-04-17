@@ -1,11 +1,6 @@
-use std::{
-    io,
-    os::windows::prelude::BorrowedHandle,
-};
+use std::{io, os::windows::prelude::BorrowedHandle};
 
-use crate::{
-    FromRawProcessHandle, Process, ProcessHandle, RawProcessHandle
-};
+use crate::{FromRawProcessHandle, Process, ProcessHandle, RawProcessHandle};
 
 /// A struct representing a running process.
 /// This struct does **NOT** own the underlying process handle (see also [`OwnedProcess`](crate::OwnedProcess) for an owned version).

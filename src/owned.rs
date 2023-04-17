@@ -1,5 +1,5 @@
 use std::{
-    fmt::{Debug},
+    fmt::Debug,
     io,
     os::windows::prelude::{
         AsRawHandle, BorrowedHandle, FromRawHandle, IntoRawHandle, OwnedHandle,
@@ -20,8 +20,8 @@ use winapi::{
 };
 
 use crate::{
-    error::ProcessError, raw, BorrowedProcess, FromRawProcessHandle, Process,
-    ProcessHandle, RawProcessHandle,
+    error::ProcessError, raw, BorrowedProcess, FromRawProcessHandle, Process, ProcessHandle,
+    RawProcessHandle,
 };
 
 /// A struct representing a running process.
