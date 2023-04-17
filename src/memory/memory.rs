@@ -31,7 +31,7 @@ impl ProcessMemory<'_> {
     /// # Safety
     /// The caller must ensure that the designated region of memory contains valid instances of type `T`.
     pub unsafe fn read_buf<T: Copy>(&self, ptr: *mut T, buf: &mut [T]) -> Result<(), ProcessError> {
-        let memory = self.slice(ptr.cast(), buf.len() * mem::size_of::<T>());
+        let memory = self.slice(ptr.cast(), mem::size_of_val(buf));
         unsafe { memory.read_buf(buf) }
     }
 
@@ -61,7 +61,7 @@ impl ProcessMemory<'_> {
 
     /// Copies the contents of the given local buffer to the given pointer.
     pub fn write_buf<T: Copy>(&self, ptr: *mut T, buf: &[T]) -> Result<(), ProcessError> {
-        self.slice(ptr.cast(), buf.len() * mem::size_of::<T>())
+        self.slice(ptr.cast(), mem::size_of_val(buf))
             .write_buf(buf)
     }
 

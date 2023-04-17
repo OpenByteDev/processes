@@ -306,7 +306,7 @@ impl<'a> ProcessMemorySlice<'a> {
     /// This function will panic if this slice is smaller than the given buffer.
     pub unsafe fn read_buf<T: Copy>(&self, buf: &mut [T]) -> Result<(), ProcessError> {
         let byte_buf = unsafe {
-            slice::from_raw_parts_mut(buf.as_mut_ptr().cast(), buf.len() * mem::size_of::<T>())
+            slice::from_raw_parts_mut(buf.as_mut_ptr().cast(), mem::size_of_val(buf))
         };
         self.read(byte_buf)
     }
@@ -380,7 +380,7 @@ impl<'a> ProcessMemorySlice<'a> {
     /// This function will panic if the size of the local buffer exceeds this slice's length.
     pub fn write_buf<T: Copy>(&self, buf: &[T]) -> Result<(), ProcessError> {
         let byte_buf =
-            unsafe { slice::from_raw_parts(buf.as_ptr().cast(), buf.len() * mem::size_of::<T>()) };
+            unsafe { slice::from_raw_parts(buf.as_ptr().cast(), mem::size_of_val(buf)) };
         self.write(byte_buf)
     }
 
